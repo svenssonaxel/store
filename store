@@ -579,7 +579,7 @@ get-commit-stat "$commit"
 exit
 fi
 
-if [ "$1" == "deduplicate" -o "$1" == "gc" -o "$1" == "gc-list" -o "$1" == "integrity"];
+if [ "$1" == "deduplicate" -o "$1" == "gc" -o "$1" == "gc-list" -o "$1" == "integrity" ];
 then repo="$2"
 if [ "$repo" == "" ]; then repo="repo"; fi
 $1
