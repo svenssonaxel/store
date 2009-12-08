@@ -2,7 +2,7 @@
 
 function list-dir {
 init-repo
-cat "$repo"/list
+cat "$repo"/list|grep -E "$1"
 }
 
 function init-repo {
@@ -18,7 +18,9 @@ dirhash="`dir-to-repo "$1" 2>"$statfile"`"
 date="`date +%Y%m%d%H%M`"
 commithash="`(echo d$date;echo c$dirhash;create-commit-stat "$statfile"|sed -r 's/^/s/')|content-to-hash 2>/dev/null`"
 saveline="${dirname}_${date}_$commithash"
-echo "$saveline" >> "$repo"/list
+if [ "`grep -Fc "$saveline" "$repo"/list`" -eq "0" ]
+then echo "$saveline" >> "$repo"/list
+fi
 rm "$statfile"
 get-commit-stat "$saveline"
 exit
@@ -219,12 +221,13 @@ function usagehelp {
 echo ""
 echo Usage:
 c="`if [ ! "$(whoami)" == "root" ]; then echo "sudo "; fi`""$0"
-echo "$c" "save dir [repo] -- save a snapshot of directory dir in repository repo"
-echo "$c" "load snap todir [repo] -- extract snapshot snap from repository repo to directory todir"
-echo "$c" "list [repo] -- list the snapshots saved in repository repo"
+echo "$c" "save dir [repo] -- save a snapshot of directory dir"
+echo "$c" "load snap todir [repo] -- extract snapshot snap to directory todir"
+echo "$c" "list [pattern] [repo] -- list the snapshots matching pattern"
 echo "$c" "stat snap [repo] -- show information about snapshot snap"
 echo "$c" "-- see this help"
 echo ""
+echo "repo is the path to the repository to operate on."
 echo "repo defaults to [current working directory]/repo"
 echo ""
 }
@@ -240,9 +243,9 @@ exit
 fi
 
 if [ "$1" == "list" ];
-then repo="$2"
+then pattern="$2" repo="$3"
 if [ "$repo" == "" ]; then repo="repo"; fi
-list-dir
+list-dir "$pattern"
 exit
 fi
 
