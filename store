@@ -1,0 +1,202 @@
+#!/bin/bash
+
+function list-dir {
+init-repo
+cat "$repo"/list
+}
+
+function init-repo {
+mkdir -p "$repo"
+touch "$repo"/list
+}
+
+function save-dir {
+init-repo
+dirname="`basename "$1"`"
+dirhash="`dir-to-repo "$1"`"
+saveline="$dirhash $dirname"
+if [ "`grep -Fc "$saveline" "$repo"/list`" -gt "0" ]; then
+echo "A directory with the same name and content is already in the repository."
+exit
+else
+echo "$saveline" >> "$repo"/list
+fi
+}
+
+function dir-to-repo {
+(
+dn="`dir-wo-slash "$1"`"
+echo n"`basename "$dn"`"
+settings-from-dir "$dn"|sed -r 's/^/s/'
+dir-content-to-repo "$dn"|sed -r 's/^/c/'
+)|content-to-hash
+}
+
+function dir-content-to-repo {
+ls -1A "$1"|
+(while IFS="" read a; do
+if [ -d "$1"/"$a" ]; then echo d"`dir-to-repo "$1"/"$a"`"; fi
+if [ -f "$1"/"$a" ]; then echo f"`file-to-repo "$1"/"$a"`"; fi
+if [ -h "$1"/"$a" ]; then echo l"`symlink-to-repo "$1"/"$a"`"; fi
+done
+)|sort
+}
+
+function dir-wo-slash {
+echo "$1"|sed -r 's/\/$//'
+}
+
+function content-to-hash {
+tf="`tempfile`"
+cat > "$tf"
+h="`sha1sum "$tf"`"
+h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
+h2="`echo "$h"|sed -r 's/^..([^ ]*).*$/\1/'`"
+mkdir -p "$repo"/$h1
+if [ -f "$repo"/$h1/$h2 ]; then rm "$tf"; else mv "$tf" "$repo"/$h1/$h2; fi
+echo "$h1$h2"
+}
+
+function file-to-repo {
+(
+echo n"`basename "$1"`"
+settings-from-file "$1"|sed -r 's/^/s/'
+echo c"`cat "$1"|content-to-hash`"
+)|content-to-hash
+}
+
+function symlink-to-repo {
+(
+echo n"`basename "$1"`"
+echo l"`readlink "$1"`"
+)|content-to-hash
+}
+
+function load-dir {
+init-repo
+if [ "`cat "$repo"/list|grep -Fc "$1"`" -gt "1" ];
+then echo More than one directory matches:
+cat "$repo"/list|grep -F "$1"
+exit
+fi
+if [ "`cat "$repo"/list|grep -c "$1"`" -eq "0" ];
+then echo No directory matches.
+exit
+fi
+dir-from-repo "`cat "$repo"/list|grep "$1"|sed -r 's/^([^ ]*) .*$/\1/'`" "`dir-wo-slash "$2"`"
+}
+
+function dir-from-repo {
+tf="`tempfile`"
+hash-to-content "$1" > "$tf"
+name="`cat "$tf"|grep '^n'|sed -r 's/^.//'`"
+ndir="$2"/"$name"
+mkdir "$ndir"
+cat "$tf"|grep '^c'|sed -r 's/^.//'| dir-content-from-repo "$ndir"
+cat "$tf"|grep '^s'|sed -r 's/^.//'| settings-to-dir "$ndir"
+rm "$tf"
+}
+
+function dir-content-from-repo {
+while IFS="" read a; do
+class="`echo "$a"|sed -r 's/^(.).*$/\1/'`"
+hash="`echo "$a"|sed -r 's/^.//'`"
+if [ "$class" == "d" ]; then dir-from-repo "$hash" "$1"; fi
+if [ "$class" == "f" ]; then file-from-repo "$hash" "$1"; fi
+if [ "$class" == "l" ]; then symlink-from-repo "$hash" "$1"; fi
+done
+}
+
+function hash-to-content {
+h1="`echo "$1"|sed -r 's/^(..).*$/\1/'`"
+h2="`echo "$1"|sed -r 's/^..([^ ]*).*$/\1/'`"
+cat "$repo"/$h1/$h2
+}
+
+function file-from-repo {
+tf="`tempfile`"
+hash-to-content "$1" > "$tf"
+name="`cat "$tf"|grep '^n'|sed -r 's/^.//'`"
+nfile="$2"/"$name"
+hash-to-content "`cat "$tf"|grep '^c'|sed -r 's/^.//'`" > "$nfile"
+cat "$tf"|grep '^s'|sed -r 's/^.//'| settings-to-file "$nfile"
+rm "$tf"
+}
+
+function symlink-from-repo {
+name="`hash-to-content "$1"|grep '^n'|sed -r 's/^.//'`"
+link="`hash-to-content "$1"|grep '^l'|sed -r 's/^.//'`"
+ln -s "$link" "$2"/"$name"
+}
+
+function settings-from-dir {
+settings-from-file "$1"
+}
+
+function settings-to-dir {
+settings-to-file "$1"
+}
+
+function settings-from-file {
+echo p"`ls -ld "$1"|sed -r 's/^.(.........).*$/\1/'`"
+echo o"`ls -ld "$1"|sed -r 's/^[^ ]*\ *[0-9]*\ *([^ ]*).*$/\1/'`"
+echo g"`ls -ld "$1"|sed -r 's/^[^ ]*\ *[0-9]*\ *[^ ]*\ *([^ ]*).*$/\1/'`"
+echo m"`ls -ld --full-time "$1"|sed -r 's/^[^ ]*\ *[0-9]*\ *[^ ]*\ *[^ ]*\ *[0-9]*\ *([0-9-]*\ [0-9:.]*\ [0-9+-]*).*$/\1/'`"
+echo a"`ls -ldu --full-time "$1"|sed -r 's/^[^ ]*\ *[0-9]*\ *[^ ]*\ *[^ ]*\ *[0-9]*\ *([0-9-]*\ [0-9:.]*\ [0-9+-]*).*$/\1/'`"
+}
+
+function settings-to-file {
+while IFS="" read a; do
+attribute="`echo "$a"|sed -r 's/^(.).*$/\1/'`"
+value="`echo "$a"|sed -r 's/^.//'`"
+if [ "$attribute" == "p" ]; then perm-to-file "$value" "$1"; fi
+if [ "$attribute" == "o" ]; then chown "$value" "$1"; fi
+if [ "$attribute" == "g" ]; then chgrp "$value" "$1"; fi
+if [ "$attribute" == "m" ]; then touch -md "$value" "$1"; fi
+if [ "$attribute" == "a" ]; then touch -ad "$value" "$1"; fi
+done
+}
+
+function perm-to-file {
+chmod "`echo "$1"|sed -r 's/--x/1/g;s/-w-/2/g;s/-wx/3/g;s/r--/4/g;s/r-x/5/g;s/rw-/6/g;s/rwx/7/g;s/---/0/g;'`" "$2"
+}
+
+function usagehelp {
+echo ""
+echo Usage:
+c="`if [ ! "$(whoami)" == "root" ]; then echo "sudo "; fi`""$0"
+echo "$c" "save dir [repo] -- save directory dir in repository repo"
+echo "$c" "list [repo] -- list the directories saved in repository repo"
+echo "$c" "load dir todir [repo] -- extract directory dir from repository repo to directory todir"
+echo "$c" "-- see this help"
+echo ""
+echo "repo defaults to [current working directory]/repo"
+echo ""
+}
+
+if [ ! "`whoami`" == "root" ]; then usagehelp; exit; fi
+
+if [ "$1" == "check" ];
+then dir="$2"; repo="$3"
+if [ "$repo" == "" ]; then repo="repo"; fi
+if [ ! -d "$dir" ]; then echo "Directory does not exist"; exit; fi
+save-dir "$dir"
+exit
+fi
+
+if [ "$1" == "list" ];
+then repo="$2"
+if [ "$repo" == "" ]; then repo="repo"; fi
+list-dir
+exit
+fi
+
+if [ "$1" == "load" ];
+then dir="$2"; todir="$3"; repo="$4"
+if [ "$repo" == "" ]; then repo="repo"; fi
+if [ ! -d "$todir" ]; then echo "Target directory does not exist"; exit; fi
+load-dir "$dir" "$todir"
+exit
+fi
+
+usagehelp
