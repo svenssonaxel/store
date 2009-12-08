@@ -47,13 +47,20 @@ echo "$1"|sed -r 's/\/$//'
 }
 
 function content-to-hash {
-tf="`tempfile`"
+tf="`tempfile`"; tfgz="`tempfile`"
 cat > "$tf"
 h="`sha1sum "$tf"`"
 h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
 h2="`echo "$h"|sed -r 's/^..([^ ]*).*$/\1/'`"
-mkdir -p "$repo"/$h1
-if [ -f "$repo"/$h1/$h2 ]; then rm "$tf"; else mv "$tf" "$repo"/$h1/$h2; fi
+if [ -f "$repo"/$h1/$h2 -o -f "$repo"/$h1/$h2.gz ];
+then rm "$tf"; rm "$tfgz"
+else mkdir -p "$repo"/$h1
+cat "$tf"|gzip>"$tfgz"
+if [ "`ls -ld "$tfgz"|sed -r 's/^[^ ]*\ *[0-9]*\ *[^ ]*\ *[^ ]*\ *([0-9]*)\ .*$/\1/'`" -lt "`ls -ld "$tf"|sed -r 's/^[^ ]*\ *[0-9]*\ *[^ ]*\ *[^ ]*\ *([0-9]*)\ .*$/\1/'`" ]
+then mv "$tfgz" "$repo"/$h1/$h2.gz;rm "$tf"
+else mv "$tf" "$repo"/$h1/$h2;rm "$tfgz"
+fi
+fi
 echo "$h1$h2"
 }
 
@@ -61,7 +68,10 @@ function file-to-repo {
 (
 echo n"`basename "$1"`"
 settings-from-file "$1"|sed -r 's/^/s/'
-echo c"`cat "$1"|content-to-hash`"
+h="`sha1sum "$1"`"
+h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
+h2="`echo "$h"|sed -r 's/^..([^ ]*).*$/\1/'`"
+if [ -f "$repo"/$h1$h2 -o -f "$repo"/$h1$h2.gz ]; then echo c$h1$h2; else echo c"`cat "$1"|content-to-hash`"; fi
 )|content-to-hash
 }
 
@@ -110,7 +120,13 @@ done
 function hash-to-content {
 h1="`echo "$1"|sed -r 's/^(..).*$/\1/'`"
 h2="`echo "$1"|sed -r 's/^..([^ ]*).*$/\1/'`"
-cat "$repo"/$h1/$h2
+if [ -f "$repo"/$h1/$h2.gz ]
+then cat "$repo"/$h1/$h2.gz|gunzip
+else
+if [ -f "$repo"/$h1/$h2 ]
+then cat "$repo"/$h1/$h2
+fi
+fi
 }
 
 function file-from-repo {
@@ -176,7 +192,7 @@ echo ""
 
 if [ ! "`whoami`" == "root" ]; then usagehelp; exit; fi
 
-if [ "$1" == "check" ];
+if [ "$1" == "save" ];
 then dir="$2"; repo="$3"
 if [ "$repo" == "" ]; then repo="repo"; fi
 if [ ! -d "$dir" ]; then echo "Directory does not exist"; exit; fi
