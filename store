@@ -16,8 +16,8 @@ statfile="`tmpfile`"
 dirname="`basename "$1"`"
 dirhash="`dir-to-repo "$1" 2>"$statfile"`"
 date="`date +%Y%m%d%H%M`"
-commithash="`(echo d$date;echo c$dirhash;create-commit-stat "$statfile"|sed -r 's/^/s/')|content-to-hash 2>/dev/null`"
-saveline="${dirname}_${date}_$commithash"
+commithash_sd="`(echo d$date;echo c$dirhash;create-commit-stat "$statfile"|sed -r 's/^/s/')|content-to-hash 2>/dev/null`"
+saveline="${dirname}_${date}_$commithash_sd"
 if [ "`grep -Fc "$saveline" "$repo"/list`" -eq "0" ]
 then echo "$saveline" >> "$repo"/list
 fi
@@ -32,9 +32,9 @@ function get-commit-stat {
 init-repo
 commit="`select-commit "$1"`"
 if [ "${commit}" == "" ]; then return; fi
-commithash="`echo "$commit"|sed -r 's/^.*_([^_]*)$/\1/'`"
+commithash_gcs="`echo "$commit"|sed -r 's/^.*_([^_]*)$/\1/'`"
 echo "Snapshot name: $commit"
-hash-to-content "$commithash"|sed -r 's/^d/Date saved: /;s/^c/Directory hash: /;s/^s//'
+hash-to-content "$commithash_gcs"|sed -r 's/^d/Date saved: /;s/^c/Directory hash: /;s/^s//'
 }
 
 function intsum {
@@ -63,10 +63,10 @@ echo --directories 1 >&2;
 
 function dir-content-to-repo {
 ls -1A "$1"|
-(while IFS="" read a; do
-if [ -d "$1"/"$a" ]; then echo d"`dir-to-repo "$1"/"$a"`"; fi
-if [ -f "$1"/"$a" ]; then echo f"`file-to-repo "$1"/"$a"`"; fi
-if [ -h "$1"/"$a" ]; then echo l"`symlink-to-repo "$1"/"$a"`"; fi
+(while IFS="" read a_dctr; do
+if [ -d "$1"/"$a_dctr" ]; then echo d"`dir-to-repo "$1"/"$a_dctr"`"; fi
+if [ -f "$1"/"$a_dctr" ]; then echo f"`file-to-repo "$1"/"$a_dctr"`"; fi
+if [ -h "$1"/"$a_dctr" ]; then echo l"`symlink-to-repo "$1"/"$a_dctr"`"; fi
 done
 )|sort
 }
@@ -80,20 +80,20 @@ ls -ld "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +([0-9]+)\ .*$/\1/'
 }
 
 function content-to-hash {
-tf="`tmpfile`"; tfgz="`tmpfile`"
-cat > "$tf"
-h="`sha1sum "$tf"`"
+tf_cth="`tmpfile`"; tfgz="`tmpfile`"
+cat > "$tf_cth"
+h="`sha1sum "$tf_cth"`"
 h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
 h2="`echo "$h"|sed -r 's/^..([^ ]*).*$/\1/'`"
 if [ -f "$repo"/$h1/$h2 -o -f "$repo"/$h1/$h2.gz ];
-then rm "$tf"; rm "$tfgz"
+then rm "$tf_cth"; rm "$tfgz"
 else mkdir -p "$repo"/$h1
-cat "$tf"|gzip>"$tfgz"
+cat "$tf_cth"|gzip>"$tfgz"
 echo --nodes 1 >&2
-echo --bytes-d "`file-size "$tf"`" >&2
-if [ "`file-size "$tfgz"`" -lt "`file-size "$tf"`" ]
-then echo --bytes-c "`file-size "$tfgz"`" >&2; mv "$tfgz" "$repo"/$h1/$h2.gz;rm "$tf"
-else echo --bytes-c "`file-size "$tf"`" >&2; mv "$tf" "$repo"/$h1/$h2;rm "$tfgz"
+echo --bytes-d "`file-size "$tf_cth"`" >&2
+if [ "`file-size "$tfgz"`" -lt "`file-size "$tf_cth"`" ]
+then echo --bytes-c "`file-size "$tfgz"`" >&2; mv "$tfgz" "$repo"/$h1/$h2.gz;rm "$tf_cth"
+else echo --bytes-c "`file-size "$tf_cth"`" >&2; mv "$tf_cth" "$repo"/$h1/$h2;rm "$tfgz"
 fi
 fi
 echo "$h1$h2"
@@ -125,45 +125,49 @@ function select-commit {
 if [ "`cat "$repo"/list|grep -Fc "$1"`" -gt "1" ];
 then echor "More than one snapshot matches:" >&2
 cat "$repo"/list|grep -F "$1" 1>&2
-exit
+return
 fi
 if [ "`cat "$repo"/list|grep -Fc "$1"`" -eq "0" ];
 then echor "No directory matches." >&2
-exit
+return
 fi
 cat "$repo"/list|grep -F "$1"
 }
 
 function load-dir {
 init-repo
-commithash="`select-commit "$1"|sed -r 's/^.*_([^_]*)$/\1/'`"
-if [ "${commithash}" == "" ]; then exit; fi
-dirhash="`hash-to-content "$commithash"|grep -E '^c'|sed -r 's/^.//'`"
+commithash_ld="`select-commit "$1"|sed -r 's/^.*_([^_]*)$/\1/'`"
+if [ "${commithash_ld}" == "" ]; then exit; fi
+dirhash="`hash-to-content "$commithash_ld"|grep -E '^c'|sed -r 's/^.//'`"
 dir-from-repo "$dirhash" "`dir-wo-slash "$2"`"
 }
 
 function dir-from-repo {
-tf="`hash-to-content "$1"`"
-name="`echo "$tf"|grep -E '^n'|sed -r 's/^.//'`"
+tf_dfr="`hash-to-content "$1"`"
+name="`echo "$tf_dfr"|grep -E '^n'|sed -r 's/^.//'`"
 ndir="$2"/"$name"
 mkdir "$ndir"
-echo "$tf"|grep -E '^c'|sed -r 's/^.//'| dir-content-from-repo "$ndir"
-echo "$tf"|grep -E '^s'|sed -r 's/^.//'| settings-to-dir "$ndir"
+echo "$tf_dfr"|grep -E '^c'|sed -r 's/^.//'| dir-content-from-repo "$ndir"
+echo "$tf_dfr"|grep -E '^s'|sed -r 's/^.//'| settings-to-dir "$ndir"
 }
 
 function dir-content-from-repo {
-while IFS="" read a; do
-class="`echo "$a"|sed -r 's/^(.).*$/\1/'`"
-hash="`echo "$a"|sed -r 's/^.//'`"
-if [ "$class" == "d" ]; then dir-from-repo "$hash" "$1"; fi
-if [ "$class" == "f" ]; then file-from-repo "$hash" "$1"; fi
-if [ "$class" == "l" ]; then symlink-from-repo "$hash" "$1"; fi
+while IFS="" read a_dcfr; do
+class="`echo "$a_dcfr"|sed -r 's/^(.).*$/\1/'`"
+hash_dcfr="`echo "$a_dcfr"|sed -r 's/^.//'`"
+if [ "$class" == "d" ]; then dir-from-repo "$hash_dcfr" "$1"; fi
+if [ "$class" == "f" ]; then file-from-repo "$hash_dcfr" "$1"; fi
+if [ "$class" == "l" ]; then symlink-from-repo "$hash_dcfr" "$1"; fi
 done
 }
 
 function hash-to-content {
 h1="`echo "$1"|sed -r 's/^(..).*$/\1/'`"
 h2="`echo "$1"|sed -r 's/^..([^ ]*).*$/\1/'`"
+if [ -f "$repo"/$h1/$h2.cat ]
+then cat "$repo"/$h1/$h2.cat|
+(while IFS="" read a_htc; do hash-to-content "$a_htc" ;done)
+else
 if [ -f "$repo"/$h1/$h2.gz ]
 then cat "$repo"/$h1/$h2.gz|gunzip
 else
@@ -171,14 +175,15 @@ if [ -f "$repo"/$h1/$h2 ]
 then cat "$repo"/$h1/$h2
 fi
 fi
+fi
 }
 
 function file-from-repo {
-tf="`hash-to-content "$1"`"
-name="`echo "$tf"|grep -E '^n'|sed -r 's/^.//'`"
+tfs="`hash-to-content "$1"`"
+name="`echo "$tfs"|grep -E '^n'|sed -r 's/^.//'`"
 nfile="$2"/"$name"
-hash-to-content "`echo "$tf"|grep -E '^c'|sed -r 's/^.//'`" > "$nfile"
-echo "$tf"|grep -E '^s'|sed -r 's/^.//'| settings-to-file "$nfile"
+hash-to-content "`echo "$tfs"|grep -E '^c'|sed -r 's/^.//'`" > "$nfile"
+echo "$tfs"|grep -E '^s'|sed -r 's/^.//'| settings-to-file "$nfile"
 }
 
 function symlink-from-repo {
@@ -220,10 +225,6 @@ function perm-to-file {
 chmod "`echo "$1"|sed -r 's/--x/1/g;s/-w-/2/g;s/-wx/3/g;s/r--/4/g;s/r-x/5/g;s/rw-/6/g;s/rwx/7/g;s/---/0/g;'`" "$2"
 }
 
-#asdfasdf
-
-#change exit to return where applicable
-#use this
 function tmpfile {
 tempfile -d "$repo"
 }
@@ -238,24 +239,6 @@ function echog {
 echo -ne '\e[32m'
 echo "$@"
 echo -ne '\e[0m'
-}
-
-#substitute this one
-function hash-to-content {
-h1="`echo "$1"|sed -r 's/^(..).*$/\1/'`"
-h2="`echo "$1"|sed -r 's/^..([^ ]*).*$/\1/'`"
-if [ -f "$repo"/$h1/$h2.cat ]
-then cat "$repo"/$h1/$h2.cat|
-(while IFS="" read a; do hash-to-content "$a" ;done)
-else
-if [ -f "$repo"/$h1/$h2.gz ]
-then cat "$repo"/$h1/$h2.gz|gunzip
-else
-if [ -f "$repo"/$h1/$h2 ]
-then cat "$repo"/$h1/$h2
-fi
-fi
-fi
 }
 
 function hash-to-filename {
@@ -289,17 +272,17 @@ echo "$1"
 type="`echo "$1"|sed -r 's/^(.).*$/\1/'`"
 
 if [ ! "$type" == "-" ];then
-hash="`echo "$1"|sed -r 's/^.//'`"
-path="`hash-to-filename "$hash"`"
+hash_nr="`echo "$1"|sed -r 's/^.//'`"
+path="`hash-to-filename "$hash_nr"`"
 if [ ! -f "$path" ]; then return; fi
 if [ "`echo "$path"|grep -Ec '\.cat$'`" == "1" ]
-    then cat "$path"|(while IFS="" read a; do nodes-referenced b"$a"; done)
+    then cat "$path"|(while IFS="" read a_nr; do nodes-referenced b"$a_nr"; done)
 fi
 if [ "$type" == "b" ]; then return; fi
 fi
 if [ "$type" == "-" ]
 then cat "$repo"/list
-else hash-to-content "$hash"
+else hash-to-content "$hash_nr"
 fi|
 case "$type" in
     "-")
@@ -312,7 +295,7 @@ case "$type" in
             grep -E '^c'|sed -r 's/^c/b/';;
     "l")
             grep -E '^c'|sed -r 's/^c/b/';;
-esac|(while IFS="" read a; do nodes-referenced "$a"; done)
+esac|(while IFS="" read a_nr; do nodes-referenced "$a_nr"; done)
 }
 
 function all-nodes-referenced {
@@ -321,8 +304,8 @@ nodes-referenced -|grep -Fv '-'|sed -r 's/^.//'|sort|uniq
 
 function all-files-referenced {
 nodes-referenced -|grep -Fv '-'|sed -r 's/^.//'|sort|uniq|
-(while IFS="" read a; do
-echo "`hash-to-filename "$a"`"
+(while IFS="" read a_afr; do
+echo "`hash-to-filename "$a_afr"`"
 done)|sort
 }
 
@@ -336,9 +319,9 @@ diff <(files-existing) <(all-files-referenced)|grep -E '^<'|sed -r 's/^< //'
 
 function check-sum-errors {
 nodes-existing|
-(while IFS="" read hash; do
-checksum="`hash-to-content "$hash"|sha1sum|sed -r 's/^([^ ]*).*$/\1/'`"
-if [ ! "$checksum" == "$hash" ]; then echo "$hash $checksum";fi
+(while IFS="" read hash_cse; do
+checksum="`hash-to-content "$hash_cse"|sha1sum|sed -r 's/^([^ ]*).*$/\1/'`"
+if [ ! "$checksum" == "$hash_cse" ]; then echo "$hash_cse $checksum";fi
 done)
 }
 
@@ -352,12 +335,12 @@ type="`echo "$1"|sed -r 's/^(.).*$/\1/'`"
 if [ "$type" == "-" ]
 then cat "$repo"/list
 else
-hash="`echo "$1"|sed -r 's/^.//'`"
-path="`hash-to-filename "$hash"`"
-if [ ! -f "$path" ]; then exit; fi
+hash_ni="`echo "$1"|sed -r 's/^.//'`"
+path="`hash-to-filename "$hash_ni"`"
+if [ ! -f "$path" ]; then return; fi
 #if [ "`echo "$path"|grep -Ec "\.cat"`" == "1" ]; then cat "$path"|sed -r 's/^/b/';fi #exit on nonexisting?
-if [ "$type" == "b" ]; then exit; fi
-hash-to-content "$hash"
+if [ "$type" == "b" ]; then return; fi
+hash-to-content "$hash_ni"
 fi|
 case "$type" in
     "-")
@@ -376,7 +359,7 @@ esac
 
 function all-nodes-integrity {
 nodes-referenced -|sort|uniq|
-(while IFS="" read a; do if [ "0`node-integrity "$a"`" -gt "0" ]; then echo "$a";fi;done)|
+(while IFS="" read a_ani; do if [ "0`node-integrity "$a_ani"`" -gt "0" ]; then echo "$a_ani";fi;done)|
 sed -r 's/^(.)/\1 /;s/^f /File /;s/^d /Directory /;s/^l /Link /;s/^c /Snapshot /;s/^-.*$/list/;s/^(.*)$/\1 is corrupt/'
 }
 
@@ -400,29 +383,29 @@ rm "$itf"
 }
 
 function gc {
-tf="`tmpfile`"
+tf_gc="`tmpfile`"
 echog "Computing cleanup..."
-files-for-gc>"$tf"
-if [ "`grep -c "" "$tf"`" -eq "0" ];
+files-for-gc>"$tf_gc"
+if [ "`grep -c "" "$tf_gc"`" -eq "0" ];
 then echog "No files to delete"
 else
 if [ "$1" == "listonly" ]
-then echog "The following files can be deleted:"; cat "$tf"
+then echog "The following files can be deleted:"; cat "$tf_gc"
 else echog "Marking files for deletion..."
-     cat "$tf"|(while IFS="" read a; do
+     cat "$tf_gc"|(while IFS="" read a; do
      echo mv "$a" "$a".delete; mv "$a" "$a".delete ;done)
      if integrity
      then echog "Deleting files..."
-         cat "$tf"|(while IFS="" read a; do
+         cat "$tf_gc"|(while IFS="" read a; do
          echo rm "$a".delete; rm "$a".delete ;done)
      else echor "Corruption detected, unmarking all files..."
-         cat "$tf"|(while IFS="" read a; do
+         cat "$tf_gc"|(while IFS="" read a; do
          echo mv "$a".delete "$a"; mv "$a".delete "$a" ;done)
          echor "You might want to check the repository integrity"
      fi
 fi
 fi
-rm "$tf"
+rm "$tf_gc"
 }
 
 function gc-list {
@@ -430,57 +413,56 @@ gc listonly
 }
 
 function find-common-prefix {
-prefixl="$1"
-tf="`tmpfile`"
+tf_fcp="`tmpfile`"
 nodes-existing|
-(while IFS="" read a; do
-echo "$a `hash-to-filename "$a"`"
+(while IFS="" read a_fcp; do
+echo "$a_fcp `hash-to-filename "$a_fcp"`"
 done)|
 grep -Ev '\.cat$'|sed -r 's/^([0-9a-f]+)\ .*$/\1/'|
-(while IFS="" read a; do
-echo "`hash-to-content "$a"|dd count=1 bs=$prefixl 2>/dev/null|sha1sum|sed -r 's/\ .*$//'` $a"
-done)|sort>"$tf"
-cat "$tf"|sed -r 's/\ .*$//'|uniq|(while IFS="" read a; do
-if [ "`grep -Ec "^$a" "$tf"`" -gt "1" ]
-then grep -E "^$a" "$tf"|sed -r 's/^.*\ //'
+(while IFS="" read b_fcp; do
+echo "`hash-to-content "$b_fcp"|dd count=1 bs=$prefixl 2>/dev/null|sha1sum|sed -r 's/\ .*$//'` $b_fcp"
+done)|sort>"$tf_fcp"
+cat "$tf_fcp"|sed -r 's/\ .*$//'|uniq|(while IFS="" read a_fcp; do
+if [ "`grep -Ec "^$a_fcp" "$tf_fcp"`" -gt "1" ]
+then grep -E "^$a_fcp" "$tf_fcp"|sed -r 's/^.*\ //'
 fi
 done)
-rm "$tf"
+rm "$tf_fcp"
 }
 
 function split-node {
-hash="$1"
-tf="`tmpfile`"
+hash_sn="$1"
+p0="`tmpfile`"
 p1="`tmpfile`"
 p2="`tmpfile`"
-hash-to-content "$hash">"$tf"
-dd bs="$prefixl" if="$tf" of="$p1" count=1 2>/dev/null
-dd bs="$prefixl" if="$tf" of="$p2" skip=1 2>/dev/null
+hash-to-content "$hash_sn">"$p0"
+dd bs="$prefixl" if="$p0" of="$p1" count=1 2>/dev/null
+dd bs="$prefixl" if="$p0" of="$p2" skip=1 2>/dev/null
 if [ "`file-size "$p1"`" -gt 0 -a "`file-size "$p2"`" -gt 0 ]; then
 hp1="`cat "$p1"|content-to-hash 2>/dev/null`"
 hp2="`cat "$p2"|content-to-hash 2>/dev/null`"
 ht="`(hash-to-content "$hp1";hash-to-content "$hp2")|sha1sum|sed -r 's/\ .*$//'`"
-if [ "$ht" == "$hash" ]
-then echog "Substituting $hash for the concatenation of" >&2
+if [ "$ht" == "$hash_sn" ]
+then echog "Substituting $hash_sn for the concatenation of" >&2
      echo  "     $hp1 ($prefixl bytes)" >&2
      echo  "     $hp2" >&2
-echo "$hash $hp1 $hp2"
-h1="`echo "$hash"|sed -r 's/^(..).*$/\1/'`"
-h2="`echo "$hash"|sed -r 's/^..(.*)$/\1/'`"
+echo "$hash_sn $hp1 $hp2"
+h1="`echo "$hash_sn"|sed -r 's/^(..).*$/\1/'`"
+h2="`echo "$hash_sn"|sed -r 's/^..(.*)$/\1/'`"
 (echo "$hp1";echo "$hp2")>"$repo/$h1/$h2.cat"
 fi
 fi
-rm "$tf"
+rm "$p0"
 rm "$p1"
 rm "$p2"
 }
 
 function block-deduplicate-once {
 btf="`tmpfile`"
-find-common-prefix "$prefixl">"$btf"
+find-common-prefix > "$btf"
 cat "$btf"|
-(while IFS="" read a; do
-split-node "$a"
+(while IFS="" read a_bdo; do
+split-node "$a_bdo"
 done)|grep -Fc ""
 rm "$btf"
 }
@@ -503,7 +485,7 @@ ctf="`tmpfile`"
 ctfn="`tmpfile`"
 ls -1A "$repo"|grep -E '^[0-9a-f]{2}$'|(while IFS="" read a; do ls -1A "$repo/$a"|(while IFS="" read b; do echo "$repo/$a/$b"; done);done)|grep -E '\.cat$'|sort|uniq>"$ctf"
 while [ "`file-size "$ctf"`" -gt "0" ]; do
-cat "$ctf"|(while IFS="" read a; do cat-compile-file "$a"; done)>"$ctfn"
+cat "$ctf"|(while IFS="" read a_cc; do cat-compile-file "$a_cc"; done)>"$ctfn"
 mv "$ctfn" "$ctf"
 done
 rm "$ctf"
@@ -511,16 +493,16 @@ rm "$ctf"
 
 function cat-compile-file {
 f="$1"
-tf="`tmpfile`"
-cat "$f"|(while IFS="" read a; do
-path="`hash-to-filename "$a"`"
+tf_ccf="`tmpfile`"
+cat "$f"|(while IFS="" read a_ccf; do
+path="`hash-to-filename "$a_ccf"`"
 if [ "`echo "$path"|grep -Ec '\.cat$'`" == "1" ]
-then cat "`hash-to-filename "$a"`"
-else echo "$a"
-fi; done)>"$tf"
-if [ ! "`cat "$tf"|sha1sum`" == "`cat "$f"|sha1sum`" ]
-then echo "$1"; mv "$tf" "$f"
-else rm "$tf"
+then cat "`hash-to-filename "$a_ccf"`"
+else echo "$a_ccf"
+fi; done)>"$tf_ccf"
+if [ ! "`cat "$tf_ccf"|sha1sum`" == "`cat "$f"|sha1sum`" ]
+then echo "$1"; mv "$tf_ccf" "$f"
+else rm "$tf_ccf"
 fi
 }
 
@@ -541,10 +523,6 @@ echo ""
 echo "repo is the path to the repository to operate on."
 echo "repo defaults to [current working directory]/repo"
 echo ""
-#deduplicate
-#gc
-#gc-list
-#integrity
 }
 
 if [ ! "`whoami`" == "root" ]; then usagehelp; exit; fi
@@ -573,9 +551,9 @@ exit
 fi
 
 if [ "$1" == "stat" ];
-then commit="$2"; repo="$3"
+then commit_stat="$2"; repo="$3"
 if [ "$repo" == "" ]; then repo="repo"; fi
-get-commit-stat "$commit"
+get-commit-stat "$commit_stat"
 exit
 fi
 
@@ -593,3 +571,4 @@ exit
 fi
 
 usagehelp
+
