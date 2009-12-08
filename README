@@ -10,3 +10,7 @@ Internally it has some resemblance to how git works, although with some differen
 
 Usage:
 For usage help, run store without parameters
+
+Dependencies:
+It's a shell script and depends on core utils and things present on most systems. A full list:
+basename, bash, cat, chgrp, chmod, chown, date, dc, dd, diff, echo, grep, gunzip, gzip, ln, mkdir, mv, readlink, rm, sed, sha1sum, sort, tee, tempfile, test, touch, uniq, whoami
