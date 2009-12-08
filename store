@@ -12,7 +12,7 @@ touch "$repo"/list
 
 function save-dir {
 init-repo
-statfile="`tempfile -d "$repo"`"
+statfile="`tmpfile`"
 dirname="`basename "$1"`"
 dirhash="`dir-to-repo "$1" 2>"$statfile"`"
 date="`date +%Y%m%d%H%M`"
@@ -22,14 +22,16 @@ if [ "`grep -Fc "$saveline" "$repo"/list`" -eq "0" ]
 then echo "$saveline" >> "$repo"/list
 fi
 rm "$statfile"
+echo ""
 get-commit-stat "$saveline"
-exit
+echo ""
+return
 }
 
 function get-commit-stat {
 init-repo
 commit="`select-commit "$1"`"
-if [ "${commit}" == "" ]; then exit; fi
+if [ "${commit}" == "" ]; then return; fi
 commithash="`echo "$commit"|sed -r 's/^.*_([^_]*)$/\1/'`"
 echo "Snapshot name: $commit"
 hash-to-content "$commithash"|sed -r 's/^d/Date saved: /;s/^c/Directory hash: /;s/^s//'
@@ -78,7 +80,7 @@ ls -ld "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +([0-9]+)\ .*$/\1/'
 }
 
 function content-to-hash {
-tf="`tempfile -d "$repo"`"; tfgz="`tempfile -d "$repo"`"
+tf="`tmpfile`"; tfgz="`tmpfile`"
 cat > "$tf"
 h="`sha1sum "$tf"`"
 h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
@@ -121,12 +123,12 @@ echo --bytes-a "`file-size "$1"`" >&2;
 
 function select-commit {
 if [ "`cat "$repo"/list|grep -Fc "$1"`" -gt "1" ];
-then echo "More than one snapshot matches:" >&2
+then echor "More than one snapshot matches:" >&2
 cat "$repo"/list|grep -F "$1" 1>&2
 exit
 fi
 if [ "`cat "$repo"/list|grep -Fc "$1"`" -eq "0" ];
-then echo "No directory matches." >&2
+then echor "No directory matches." >&2
 exit
 fi
 cat "$repo"/list|grep -F "$1"
@@ -218,19 +220,331 @@ function perm-to-file {
 chmod "`echo "$1"|sed -r 's/--x/1/g;s/-w-/2/g;s/-wx/3/g;s/r--/4/g;s/r-x/5/g;s/rw-/6/g;s/rwx/7/g;s/---/0/g;'`" "$2"
 }
 
+#asdfasdf
+
+#change exit to return where applicable
+#use this
+function tmpfile {
+tempfile -d "$repo"
+}
+
+function echor {
+echo -ne '\e[31m'
+echo "$@"
+echo -ne '\e[0m'
+}
+
+function echog {
+echo -ne '\e[32m'
+echo "$@"
+echo -ne '\e[0m'
+}
+
+#substitute this one
+function hash-to-content {
+h1="`echo "$1"|sed -r 's/^(..).*$/\1/'`"
+h2="`echo "$1"|sed -r 's/^..([^ ]*).*$/\1/'`"
+if [ -f "$repo"/$h1/$h2.cat ]
+then cat "$repo"/$h1/$h2.cat|
+(while IFS="" read a; do hash-to-content "$a" ;done)
+else
+if [ -f "$repo"/$h1/$h2.gz ]
+then cat "$repo"/$h1/$h2.gz|gunzip
+else
+if [ -f "$repo"/$h1/$h2 ]
+then cat "$repo"/$h1/$h2
+fi
+fi
+fi
+}
+
+function hash-to-filename {
+if [ "$1" == "-" ]; then echo "$repo"/list; else
+h1="`echo "$1"|sed -r 's/^(..).*$/\1/'`"
+h2="`echo "$1"|sed -r 's/^..([^ ]*).*$/\1/'`"
+if [ -f "$repo"/$h1/$h2.cat ]
+then echo "$repo"/$h1/$h2.cat
+else
+if [ -f "$repo"/$h1/$h2.gz ]
+then echo "$repo"/$h1/$h2.gz
+else
+if [ -f "$repo"/$h1/$h2 ]
+then echo "$repo"/$h1/$h2
+fi
+fi
+fi
+fi
+}
+
+function nodes-existing {
+ls -1A "$repo"|grep -E '^[0-9a-f]{2}$'|(while IFS="" read a; do ls -1A "$repo/$a"|sed -r 's/^/'"$a"'/';done)|sed -r 's/\.gz$//;s/\.cat$//'|grep -Ev '\.delete$'|sort
+}
+
+function files-existing {
+ls -1A "$repo"|grep -E '^[0-9a-f]{2}$'|(while IFS="" read a; do ls -1A "$repo/$a"|(while IFS="" read b; do echo "$repo/$a/$b"; done);done)|sort
+}
+
+function nodes-referenced {
+echo "$1"
+type="`echo "$1"|sed -r 's/^(.).*$/\1/'`"
+
+if [ ! "$type" == "-" ];then
+hash="`echo "$1"|sed -r 's/^.//'`"
+path="`hash-to-filename "$hash"`"
+if [ ! -f "$path" ]; then return; fi
+if [ "`echo "$path"|grep -Ec '\.cat$'`" == "1" ]
+    then cat "$path"|(while IFS="" read a; do nodes-referenced b"$a"; done)
+fi
+if [ "$type" == "b" ]; then return; fi
+fi
+if [ "$type" == "-" ]
+then cat "$repo"/list
+else hash-to-content "$hash"
+fi|
+case "$type" in
+    "-")
+            sed -r 's/^.*_([^_]*)$/c\1/';;
+    "c")
+            grep -E '^c'|sed -r 's/^c/d/';;
+    "d")
+            grep -E '^c'|sed -r 's/^c//';;
+    "f")
+            grep -E '^c'|sed -r 's/^c/b/';;
+    "l")
+            grep -E '^c'|sed -r 's/^c/b/';;
+esac|(while IFS="" read a; do nodes-referenced "$a"; done)
+}
+
+function all-nodes-referenced {
+nodes-referenced -|grep -Fv '-'|sed -r 's/^.//'|sort|uniq
+}
+
+function all-files-referenced {
+nodes-referenced -|grep -Fv '-'|sed -r 's/^.//'|sort|uniq|
+(while IFS="" read a; do
+echo "`hash-to-filename "$a"`"
+done)|sort
+}
+
+function missing-nodes {
+diff <(all-nodes-referenced) <(nodes-existing)|grep -E '^<'|sed -r 's/^< //'
+}
+
+function files-for-gc {
+diff <(files-existing) <(all-files-referenced)|grep -E '^<'|sed -r 's/^< //'
+}
+
+function check-sum-errors {
+nodes-existing|
+(while IFS="" read hash; do
+checksum="`hash-to-content "$hash"|sha1sum|sed -r 's/^([^ ]*).*$/\1/'`"
+if [ ! "$checksum" == "$hash" ]; then echo "$hash $checksum";fi
+done)
+}
+
+function check-sum {
+check-sum-errors|sed -r 's/^(.*)\ (.*)$/Node \1 has unmatching checksum \2/'
+}
+
+function node-integrity {
+type="`echo "$1"|sed -r 's/^(.).*$/\1/'`"
+
+if [ "$type" == "-" ]
+then cat "$repo"/list
+else
+hash="`echo "$1"|sed -r 's/^.//'`"
+path="`hash-to-filename "$hash"`"
+if [ ! -f "$path" ]; then exit; fi
+#if [ "`echo "$path"|grep -Ec "\.cat"`" == "1" ]; then cat "$path"|sed -r 's/^/b/';fi #exit on nonexisting?
+if [ "$type" == "b" ]; then exit; fi
+hash-to-content "$hash"
+fi|
+case "$type" in
+    "-")
+            grep -Ecv '^.*_[0-9]{12}_[0-9a-f]{40}$';;
+    "c")
+            grep -Ecv '^s[A-Z][a-z ]*\:\ [0-9]+$|^d[0-9]{12}$|^c[0-9a-f]{40}$';;
+    "d")
+            grep -Ecv '^n.+|^sp[rwx-]{9}$|^s[og].+|s[ma][0-9 :.+-]+$|^c[dfl][0-9a-f]{40}$';;
+    "f")
+            grep -Ecv '^n.+|^sp[rwx-]{9}$|^s[og].+|s[ma][0-9 :.+-]+$|^c[0-9a-f]{40}$';;
+    "l")
+            grep -Ecv '^n.+|^l[0-9a-f]{40}$';;
+esac
+#fixme: some line prefixes does not allow multiple lines, need to check this.
+}
+
+function all-nodes-integrity {
+nodes-referenced -|sort|uniq|
+(while IFS="" read a; do if [ "0`node-integrity "$a"`" -gt "0" ]; then echo "$a";fi;done)|
+sed -r 's/^(.)/\1 /;s/^f /File /;s/^d /Directory /;s/^l /Link /;s/^c /Snapshot /;s/^-.*$/list/;s/^(.*)$/\1 is corrupt/'
+}
+
+function integrity {
+itf="`tmpfile`"
+echog "Checking repository integrity..." >&2
+(
+echog "   Checking format integrity..." >&2
+all-nodes-integrity
+echog "   Computing checksums..." >&2
+check-sum
+echog "   Looking for missing nodes..." >&2
+missing-nodes|sed -r 's/^(.*)$/Node \1 is missing/'
+)|tee "$itf"
+if [ "`grep -c "" "$itf"`" -eq "0" ];
+then echog "No corruption detected" >&2
+return 0
+else return 1
+fi
+rm "$itf"
+}
+
+function gc {
+tf="`tmpfile`"
+echog "Computing cleanup..."
+files-for-gc>"$tf"
+if [ "`grep -c "" "$tf"`" -eq "0" ];
+then echog "No files to delete"
+else
+if [ "$1" == "listonly" ]
+then echog "The following files can be deleted:"; cat "$tf"
+else echog "Marking files for deletion..."
+     cat "$tf"|(while IFS="" read a; do
+     echo mv "$a" "$a".delete; mv "$a" "$a".delete ;done)
+     if integrity
+     then echog "Deleting files..."
+         cat "$tf"|(while IFS="" read a; do
+         echo rm "$a".delete; rm "$a".delete ;done)
+     else echor "Corruption detected, unmarking all files..."
+         cat "$tf"|(while IFS="" read a; do
+         echo mv "$a".delete "$a"; mv "$a".delete "$a" ;done)
+         echor "You might want to check the repository integrity"
+     fi
+fi
+fi
+rm "$tf"
+}
+
+function gc-list {
+gc listonly
+}
+
+function find-common-prefix {
+prefixl="$1"
+tf="`tmpfile`"
+nodes-existing|
+(while IFS="" read a; do
+echo "$a `hash-to-filename "$a"`"
+done)|
+grep -Ev '\.cat$'|sed -r 's/^([0-9a-f]+)\ .*$/\1/'|
+(while IFS="" read a; do
+echo "`hash-to-content "$a"|dd count=1 bs=$prefixl 2>/dev/null|sha1sum|sed -r 's/\ .*$//'` $a"
+done)|sort>"$tf"
+cat "$tf"|sed -r 's/\ .*$//'|uniq|(while IFS="" read a; do
+if [ "`grep -Ec "^$a" "$tf"`" -gt "1" ]
+then grep -E "^$a" "$tf"|sed -r 's/^.*\ //'
+fi
+done)
+rm "$tf"
+}
+
+function split-node {
+hash="$1"
+tf="`tmpfile`"
+p1="`tmpfile`"
+p2="`tmpfile`"
+hash-to-content "$hash">"$tf"
+dd bs="$prefixl" if="$tf" of="$p1" count=1 2>/dev/null
+dd bs="$prefixl" if="$tf" of="$p2" skip=1 2>/dev/null
+if [ "`file-size "$p1"`" -gt 0 -a "`file-size "$p2"`" -gt 0 ]; then
+hp1="`cat "$p1"|content-to-hash 2>/dev/null`"
+hp2="`cat "$p2"|content-to-hash 2>/dev/null`"
+ht="`(hash-to-content "$hp1";hash-to-content "$hp2")|sha1sum|sed -r 's/\ .*$//'`"
+if [ "$ht" == "$hash" ]
+then echog "Substituting $hash for the concatenation of" >&2
+     echo  "     $hp1 ($prefixl bytes)" >&2
+     echo  "     $hp2" >&2
+echo "$hash $hp1 $hp2"
+h1="`echo "$hash"|sed -r 's/^(..).*$/\1/'`"
+h2="`echo "$hash"|sed -r 's/^..(.*)$/\1/'`"
+(echo "$hp1";echo "$hp2")>"$repo/$h1/$h2.cat"
+fi
+fi
+rm "$tf"
+rm "$p1"
+rm "$p2"
+}
+
+function block-deduplicate-once {
+btf="`tmpfile`"
+find-common-prefix "$prefixl">"$btf"
+cat "$btf"|
+(while IFS="" read a; do
+split-node "$a"
+done)|grep -Fc ""
+rm "$btf"
+}
+
+function deduplicate {
+echog "Deduplicating on block level..."
+#instead of this loop, resolve only once for the minimum-length prefix, then find the longest prefix of two files, update the temporary register with newly created files
+for prefixl in 67108864 33554432 16777216 8388608 4194304 2097152 1048576 524288 262144 131072 65536 32768 16384 8192 4096 2048 1024 512 256
+do
+while [ ! "`block-deduplicate-once`" == "0" ];do noop=noop;done
+done
+echog "Compiling concatenation files..."
+cat-compile
+echog "Done."
+}
+
+function cat-compile {
+#backup .cat-files and check integrity before finishing.
+ctf="`tmpfile`"
+ctfn="`tmpfile`"
+ls -1A "$repo"|grep -E '^[0-9a-f]{2}$'|(while IFS="" read a; do ls -1A "$repo/$a"|(while IFS="" read b; do echo "$repo/$a/$b"; done);done)|grep -E '\.cat$'|sort|uniq>"$ctf"
+while [ "`file-size "$ctf"`" -gt "0" ]; do
+cat "$ctf"|(while IFS="" read a; do cat-compile-file "$a"; done)>"$ctfn"
+mv "$ctfn" "$ctf"
+done
+rm "$ctf"
+}
+
+function cat-compile-file {
+f="$1"
+tf="`tmpfile`"
+cat "$f"|(while IFS="" read a; do
+path="`hash-to-filename "$a"`"
+if [ "`echo "$path"|grep -Ec '\.cat$'`" == "1" ]
+then cat "`hash-to-filename "$a"`"
+else echo "$a"
+fi; done)>"$tf"
+if [ ! "`cat "$tf"|sha1sum`" == "`cat "$f"|sha1sum`" ]
+then echo "$1"; mv "$tf" "$f"
+else rm "$tf"
+fi
+}
+
 function usagehelp {
 echo ""
 echo Usage:
 c="`if [ ! "$(whoami)" == "root" ]; then echo "sudo "; fi`""$0"
-echo "$c" "save dir [repo] -- save a snapshot of directory dir"
+echo "$c" "save dir [repo]        -- save a snapshot of directory dir"
 echo "$c" "load snap todir [repo] -- extract snapshot snap to directory todir"
-echo "$c" "list [pattern] [repo] -- list the snapshots matching pattern"
-echo "$c" "stat snap [repo] -- show information about snapshot snap"
-echo "$c" "-- see this help"
+echo "$c" "list [pattern] [repo]  -- list the snapshots matching pattern"
+echo "$c" "stat snap [repo]       -- show information about snapshot snap"
+echo "$c" "deduplicate [repo]     -- perform blockwise deduplication to use even less diskspace"
+echo "$c" "gc [repo]              -- garbage collect a repository (delete unused files)"
+echo "$c" "gc-list [repo]         -- show what files are not needed"
+echo "$c" "integrity [repo]       -- perform a data integrity check"
+echo "$c" "                       -- see this help"
 echo ""
 echo "repo is the path to the repository to operate on."
 echo "repo defaults to [current working directory]/repo"
 echo ""
+#deduplicate
+#gc
+#gc-list
+#integrity
 }
 
 if [ ! "`whoami`" == "root" ]; then usagehelp; exit; fi
@@ -262,6 +576,19 @@ if [ "$1" == "stat" ];
 then commit="$2"; repo="$3"
 if [ "$repo" == "" ]; then repo="repo"; fi
 get-commit-stat "$commit"
+exit
+fi
+
+if [ "$1" == "deduplicate" -o "$1" == "gc" -o "$1" == "gc-list" -o "$1" == "integrity"];
+then repo="$2"
+if [ "$repo" == "" ]; then repo="repo"; fi
+$1
+exit
+fi
+
+#debugging
+if [ "$1" == "do" ]
+then repo="repo"; $2
 exit
 fi
 
