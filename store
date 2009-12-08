@@ -12,15 +12,39 @@ touch "$repo"/list
 
 function save-dir {
 init-repo
+statfile="`tempfile -d "$repo"`"
 dirname="`basename "$1"`"
-dirhash="`dir-to-repo "$1"`"
-saveline="$dirhash $dirname"
-if [ "`grep -Fc "$saveline" "$repo"/list`" -gt "0" ]; then
-echo "A directory with the same name and content is already in the repository."
-exit
-else
+dirhash="`dir-to-repo "$1" 2>"$statfile"`"
+date="`date +%Y%m%d%H%M`"
+commithash="`(echo d$date;echo c$dirhash;create-commit-stat "$statfile"|sed -r 's/^/s/')|content-to-hash 2>/dev/null`"
+saveline="${dirname}_${date}_$commithash"
 echo "$saveline" >> "$repo"/list
-fi
+rm "$statfile"
+get-commit-stat "$saveline"
+exit
+}
+
+function get-commit-stat {
+init-repo
+commit="`select-commit "$1"`"
+if [ "${commit}" == "" ]; then exit; fi
+commithash="`echo "$commit"|sed -r 's/^.*_([^_]*)$/\1/'`"
+echo "Snapshot name: $commit"
+hash-to-content "$commithash"|sed -r 's/^d/Date saved: /;s/^c/Directory hash: /;s/^s//'
+}
+
+function intsum {
+cat|sed -r 's/^[^0-9]*([0-9]+)[^0-9]*$/\1+/'|(echo 0;cat;echo p)|dc
+}
+
+function create-commit-stat {
+echo "Bytes: `cat "$1"|grep -F -- --bytes-a|intsum`"
+echo "Files: `cat "$1"|grep -F -- --files|intsum`"
+echo "Directories: `cat "$1"|grep -F -- --directories|intsum`"
+echo "Symlinks: `cat "$1"|grep -F -- --symlinks|intsum`"
+echo "Nodes: `cat "$1"|grep -F -- --nodes|intsum`"
+echo "Bytes after deduplication: `cat "$1"|grep -F -- --bytes-d|intsum`"
+echo "Bytes after compression: `cat "$1"|grep -F -- --bytes-c|intsum`"
 }
 
 function dir-to-repo {
@@ -29,6 +53,7 @@ dn="`dir-wo-slash "$1"`"
 echo n"`basename "$dn"`"
 settings-from-dir "$dn"|sed -r 's/^/s/'
 dir-content-to-repo "$dn"|sed -r 's/^/c/'
+echo --directories 1 >&2;
 )|content-to-hash
 }
 
@@ -46,8 +71,12 @@ function dir-wo-slash {
 echo "$1"|sed -r 's/\/$//'
 }
 
+function file-size {
+ls -ld "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +([0-9]+)\ .*$/\1/'
+}
+
 function content-to-hash {
-tf="`tempfile`"; tfgz="`tempfile`"
+tf="`tempfile -d "$repo"`"; tfgz="`tempfile -d "$repo"`"
 cat > "$tf"
 h="`sha1sum "$tf"`"
 h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
@@ -56,9 +85,11 @@ if [ -f "$repo"/$h1/$h2 -o -f "$repo"/$h1/$h2.gz ];
 then rm "$tf"; rm "$tfgz"
 else mkdir -p "$repo"/$h1
 cat "$tf"|gzip>"$tfgz"
-if [ "`ls -ld "$tfgz"|sed -r 's/^[^ ]*\ *[0-9]*\ *[^ ]*\ *[^ ]*\ *([0-9]*)\ .*$/\1/'`" -lt "`ls -ld "$tf"|sed -r 's/^[^ ]*\ *[0-9]*\ *[^ ]*\ *[^ ]*\ *([0-9]*)\ .*$/\1/'`" ]
-then mv "$tfgz" "$repo"/$h1/$h2.gz;rm "$tf"
-else mv "$tf" "$repo"/$h1/$h2;rm "$tfgz"
+echo --nodes 1 >&2
+echo --bytes-d "`file-size "$tf"`" >&2
+if [ "`file-size "$tfgz"`" -lt "`file-size "$tf"`" ]
+then echo --bytes-c "`file-size "$tfgz"`" >&2; mv "$tfgz" "$repo"/$h1/$h2.gz;rm "$tf"
+else echo --bytes-c "`file-size "$tf"`" >&2; mv "$tf" "$repo"/$h1/$h2;rm "$tfgz"
 fi
 fi
 echo "$h1$h2"
@@ -71,6 +102,8 @@ settings-from-file "$1"|sed -r 's/^/s/'
 h="`sha1sum "$1"`"
 h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
 h2="`echo "$h"|sed -r 's/^..([^ ]*).*$/\1/'`"
+echo --files 1 >&2;
+echo --bytes-a "`file-size "$1"`" >&2; 
 if [ -f "$repo"/$h1$h2 -o -f "$repo"/$h1$h2.gz ]; then echo c$h1$h2; else echo c"`cat "$1"|content-to-hash`"; fi
 )|content-to-hash
 }
@@ -79,32 +112,39 @@ function symlink-to-repo {
 (
 echo n"`basename "$1"`"
 echo l"`readlink "$1"`"
+echo --symlinks 1 >&2;
+echo --bytes-a "`file-size "$1"`" >&2; 
 )|content-to-hash
+}
+
+function select-commit {
+if [ "`cat "$repo"/list|grep -Fc "$1"`" -gt "1" ];
+then echo "More than one snapshot matches:" >&2
+cat "$repo"/list|grep -F "$1" 1>&2
+exit
+fi
+if [ "`cat "$repo"/list|grep -Fc "$1"`" -eq "0" ];
+then echo "No directory matches." >&2
+exit
+fi
+cat "$repo"/list|grep -F "$1"
 }
 
 function load-dir {
 init-repo
-if [ "`cat "$repo"/list|grep -Fc "$1"`" -gt "1" ];
-then echo More than one directory matches:
-cat "$repo"/list|grep -F "$1"
-exit
-fi
-if [ "`cat "$repo"/list|grep -c "$1"`" -eq "0" ];
-then echo No directory matches.
-exit
-fi
-dir-from-repo "`cat "$repo"/list|grep "$1"|sed -r 's/^([^ ]*) .*$/\1/'`" "`dir-wo-slash "$2"`"
+commithash="`select-commit "$1"|sed -r 's/^.*_([^_]*)$/\1/'`"
+if [ "${commithash}" == "" ]; then exit; fi
+dirhash="`hash-to-content "$commithash"|grep -E '^c'|sed -r 's/^.//'`"
+dir-from-repo "$dirhash" "`dir-wo-slash "$2"`"
 }
 
 function dir-from-repo {
-tf="`tempfile`"
-hash-to-content "$1" > "$tf"
-name="`cat "$tf"|grep '^n'|sed -r 's/^.//'`"
+tf="`hash-to-content "$1"`"
+name="`echo "$tf"|grep -E '^n'|sed -r 's/^.//'`"
 ndir="$2"/"$name"
 mkdir "$ndir"
-cat "$tf"|grep '^c'|sed -r 's/^.//'| dir-content-from-repo "$ndir"
-cat "$tf"|grep '^s'|sed -r 's/^.//'| settings-to-dir "$ndir"
-rm "$tf"
+echo "$tf"|grep -E '^c'|sed -r 's/^.//'| dir-content-from-repo "$ndir"
+echo "$tf"|grep -E '^s'|sed -r 's/^.//'| settings-to-dir "$ndir"
 }
 
 function dir-content-from-repo {
@@ -130,18 +170,16 @@ fi
 }
 
 function file-from-repo {
-tf="`tempfile`"
-hash-to-content "$1" > "$tf"
-name="`cat "$tf"|grep '^n'|sed -r 's/^.//'`"
+tf="`hash-to-content "$1"`"
+name="`echo "$tf"|grep -E '^n'|sed -r 's/^.//'`"
 nfile="$2"/"$name"
-hash-to-content "`cat "$tf"|grep '^c'|sed -r 's/^.//'`" > "$nfile"
-cat "$tf"|grep '^s'|sed -r 's/^.//'| settings-to-file "$nfile"
-rm "$tf"
+hash-to-content "`echo "$tf"|grep -E '^c'|sed -r 's/^.//'`" > "$nfile"
+echo "$tf"|grep -E '^s'|sed -r 's/^.//'| settings-to-file "$nfile"
 }
 
 function symlink-from-repo {
-name="`hash-to-content "$1"|grep '^n'|sed -r 's/^.//'`"
-link="`hash-to-content "$1"|grep '^l'|sed -r 's/^.//'`"
+name="`hash-to-content "$1"|grep -E '^n'|sed -r 's/^.//'`"
+link="`hash-to-content "$1"|grep -E '^l'|sed -r 's/^.//'`"
 ln -s "$link" "$2"/"$name"
 }
 
@@ -155,10 +193,10 @@ settings-to-file "$1"
 
 function settings-from-file {
 echo p"`ls -ld "$1"|sed -r 's/^.(.........).*$/\1/'`"
-echo o"`ls -ld "$1"|sed -r 's/^[^ ]*\ *[0-9]*\ *([^ ]*).*$/\1/'`"
-echo g"`ls -ld "$1"|sed -r 's/^[^ ]*\ *[0-9]*\ *[^ ]*\ *([^ ]*).*$/\1/'`"
-echo m"`ls -ld --full-time "$1"|sed -r 's/^[^ ]*\ *[0-9]*\ *[^ ]*\ *[^ ]*\ *[0-9]*\ *([0-9-]*\ [0-9:.]*\ [0-9+-]*).*$/\1/'`"
-echo a"`ls -ldu --full-time "$1"|sed -r 's/^[^ ]*\ *[0-9]*\ *[^ ]*\ *[^ ]*\ *[0-9]*\ *([0-9-]*\ [0-9:.]*\ [0-9+-]*).*$/\1/'`"
+echo o"`ls -ld "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +([^ ]+).*$/\1/'`"
+echo g"`ls -ld "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +([^ ]+).*$/\1/'`"
+echo m"`ls -ld --full-time "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`"
+echo a"`ls -ldu --full-time "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`"
 }
 
 function settings-to-file {
@@ -181,9 +219,10 @@ function usagehelp {
 echo ""
 echo Usage:
 c="`if [ ! "$(whoami)" == "root" ]; then echo "sudo "; fi`""$0"
-echo "$c" "save dir [repo] -- save directory dir in repository repo"
-echo "$c" "list [repo] -- list the directories saved in repository repo"
-echo "$c" "load dir todir [repo] -- extract directory dir from repository repo to directory todir"
+echo "$c" "save dir [repo] -- save a snapshot of directory dir in repository repo"
+echo "$c" "load snap todir [repo] -- extract snapshot snap from repository repo to directory todir"
+echo "$c" "list [repo] -- list the snapshots saved in repository repo"
+echo "$c" "stat snap [repo] -- show information about snapshot snap"
 echo "$c" "-- see this help"
 echo ""
 echo "repo defaults to [current working directory]/repo"
@@ -212,6 +251,13 @@ then dir="$2"; todir="$3"; repo="$4"
 if [ "$repo" == "" ]; then repo="repo"; fi
 if [ ! -d "$todir" ]; then echo "Target directory does not exist"; exit; fi
 load-dir "$dir" "$todir"
+exit
+fi
+
+if [ "$1" == "stat" ];
+then commit="$2"; repo="$3"
+if [ "$repo" == "" ]; then repo="repo"; fi
+get-commit-stat "$commit"
 exit
 fi
 
