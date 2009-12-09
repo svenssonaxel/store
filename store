@@ -108,7 +108,7 @@ h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
 h2="`echo "$h"|sed -r 's/^..([^ ]*).*$/\1/'`"
 echo --files 1 >&2;
 echo --bytes-a "`file-size "$1"`" >&2; 
-if [ -f "$repo"/$h1$h2 -o -f "$repo"/$h1$h2.gz ]; then echo c$h1$h2; else echo c"`cat "$1"|content-to-hash`"; fi
+if [ -f "$repo"/$h1/$h2.cat -o -f "$repo"/$h1/$h2.gz -o -f "$repo"/$h1/$h2 ]; then echo c$h1$h2; else echo c"`cat "$1"|content-to-hash`"; fi
 )|content-to-hash
 }
 
@@ -412,71 +412,87 @@ function gc-list {
 gc listonly
 }
 
-function find-common-prefix {
-tf_fcp="`tmpfile`"
-nodes-existing|
-(while IFS="" read a_fcp; do
-echo "$a_fcp `hash-to-filename "$a_fcp"`"
-done)|
-grep -Ev '\.cat$'|sed -r 's/^([0-9a-f]+)\ .*$/\1/'|
-(while IFS="" read b_fcp; do
-echo "`hash-to-content "$b_fcp"|dd count=1 bs=$prefixl 2>/dev/null|sha1sum|sed -r 's/\ .*$//'` $b_fcp"
-done)|sort>"$tf_fcp"
-cat "$tf_fcp"|sed -r 's/\ .*$//'|uniq|(while IFS="" read a_fcp; do
-if [ "`grep -Ec "^$a_fcp" "$tf_fcp"`" -gt "1" ]
-then grep -E "^$a_fcp" "$tf_fcp"|sed -r 's/^.*\ //'
-fi
-done)
-rm "$tf_fcp"
+function file-part {
+let hl="$3"-"$2"
+dd if="$1" bs=1 count="$hl" skip="$2" 2>/dev/null
 }
 
-function split-node {
-hash_sn="$1"
-p0="`tmpfile`"
-p1="`tmpfile`"
-p2="`tmpfile`"
-hash-to-content "$hash_sn">"$p0"
-dd bs="$prefixl" if="$p0" of="$p1" count=1 2>/dev/null
-dd bs="$prefixl" if="$p0" of="$p2" skip=1 2>/dev/null
-if [ "`file-size "$p1"`" -gt 0 -a "`file-size "$p2"`" -gt 0 ]; then
-hp1="`cat "$p1"|content-to-hash 2>/dev/null`"
-hp2="`cat "$p2"|content-to-hash 2>/dev/null`"
-ht="`(hash-to-content "$hp1";hash-to-content "$hp2")|sha1sum|sed -r 's/\ .*$//'`"
-if [ "$ht" == "$hash_sn" ]
-then echog "Substituting $hash_sn for the concatenation of" >&2
-     echo  "     $hp1 ($prefixl bytes)" >&2
-     echo  "     $hp2" >&2
-echo "$hash_sn $hp1 $hp2"
-h1="`echo "$hash_sn"|sed -r 's/^(..).*$/\1/'`"
-h2="`echo "$hash_sn"|sed -r 's/^..(.*)$/\1/'`"
-(echo "$hp1";echo "$hp2")>"$repo/$h1/$h2.cat"
-fi
-fi
-rm "$p0"
-rm "$p1"
-rm "$p2"
+function hash-from-file-part {
+file-part "$1" "$2" "$3"|sha1sum|sed -r 's/\ .*$//'
 }
 
-function block-deduplicate-once {
-btf="`tmpfile`"
-find-common-prefix > "$btf"
-cat "$btf"|
-(while IFS="" read a_bdo; do
-split-node "$a_bdo"
-done)|grep -Fc ""
-rm "$btf"
+function common-prefixl-of {
+f1="$1"
+f2="$2"
+ep="`file-size "$f1"`"
+l2="`file-size "$f2"`"
+echo dbg l2= "$l2" ep= "$ep" >&2
+if [ "$l2" -lt "$ep" ]; then ep="$l2";fi
+bp="0"
+echo dbg bp= "$bp" ep= "$ep" >&2
+while [ "$bp" -lt "$ep" ]; do
+let np=("$ep"-"$bp")/2+"$bp"
+if [ "$np" == "$bp" ]; then nbp="$ep"; else nbp="$np";fi
+if [ "`hash-from-file-part "$f1" "$bp" "$nbp"`" == "`hash-from-file-part "$f2" "$bp" "$nbp"`" ]; then bp="$nbp"; else ep="$np";fi
+done
+echo "$bp"
+}
+
+function dedup-prefix {
+cf1="`tmpfile`";hash-to-content "$1" > "$cf1"
+cf2="`tmpfile`";hash-to-content "$2" > "$cf2"
+cpl="`common-prefixl-of "$cf1" "$cf2"`"
+nf1="`tmpfile`";file-part "$cf1" 0 "$cpl" > "$nf1"
+nf2="`tmpfile`";file-part "$cf1" "$cpl" "`file-size "$cf1"`" > "$nf2"
+nf3="`tmpfile`";file-part "$cf2" "$cpl" "`file-size "$cf2"`" > "$nf3"
+make-cat "$nf1" "$nf2"
+make-cat "$nf1" "$nf3"
+rm "$cf1" "$cf2" "$nf1" "$nf2" "$nf3"
+}
+
+function make-cat {
+if [ "`file-size "$1"`" -eq 0 -o "`file-size "$2"`" -eq 0 ]; then return;fi
+nch="`cat "$1" "$2"|sha1sum|sed -r 's/\ .*$//'`"
+ncf="$repo/`echo "$nch"|sed -r 's/^(..)/\1\//'`.cat"
+(cat "$1"|content-to-hash;cat "$2"|content-to-hash)>"$ncf" 2>/dev/null
+echo "$nch"
+cat "$ncf"
+echog "Substituting $nch for the concatenation of" >&2
+cat "$ncf"|sed -r 's/^/     /' >&2
+echo "     (`file-size "$1"` and `file-size "$2"` bytes respectively)" >&2
+}
+
+function update-prefix-index {
+while IFS="" read h_upi; do
+if [ "`hash-to-filename "$h_upi"|grep -Ec '\.cat$'`" == "1" ]
+then tf_upi="`tmpfile`"
+     cat "$1"|grep -Fv " $h_upi">"$tf_upi"
+     mv "$tf_upi" "$1"
+else echo "`hash-to-content "$h_upi"|dd count=1 bs=$prefixl 2>/dev/null|sha1sum|sed -r 's/\ .*$//'` $h_upi" >> "$1"
+fi
+done
+tf_upi="`tmpfile`";cat "$1"|sort|uniq>"$tf_upi";mv "$tf_upi" "$1"
 }
 
 function deduplicate {
-echog "Deduplicating on block level..."
-#instead of this loop, resolve only once for the minimum-length prefix, then find the longest prefix of two files, update the temporary register with newly created files
-for prefixl in 67108864 33554432 16777216 8388608 4194304 2097152 1048576 524288 262144 131072 65536 32768 16384 8192 4096 2048 1024 512 256
-do
-while [ ! "`block-deduplicate-once`" == "0" ];do noop=noop;done
+prefixl=1024
+echog "Deduplicating file prefixes (minimum length $prefixl bytes)..."
+dtf="`tmpfile`"
+nodes-existing|update-prefix-index "$dtf"
+while [ ! "$dtfh" == "`sha1sum "$dtf"`" ]; do
+dtfh="`sha1sum "$dtf"`"
+dih2="";dip2="";cat "$dtf"|(while read dip dih; do
+if [ "$dip" == "$dip2" ]; then
+dedup-prefix "$dih" "$dih2"|update-prefix-index "$dtf";break
+fi
+dih2="$dih"
+dip2="$dip"
+done)
 done
+rm "$dtf"
 echog "Compiling concatenation files..."
 cat-compile
-echog "Done."
+echog "Done. You might want to perform a garbage collect now."
 }
 
 function cat-compile {
@@ -514,7 +530,7 @@ echo "$c" "save dir [repo]        -- save a snapshot of directory dir"
 echo "$c" "load snap todir [repo] -- extract snapshot snap to directory todir"
 echo "$c" "list [pattern] [repo]  -- list the snapshots matching pattern"
 echo "$c" "stat snap [repo]       -- show information about snapshot snap"
-echo "$c" "deduplicate [repo]     -- perform blockwise deduplication to use even less diskspace"
+echo "$c" "deduplicate [repo]     -- perform prefix deduplication to use even less diskspace"
 echo "$c" "gc [repo]              -- garbage collect a repository (delete unused files)"
 echo "$c" "gc-list [repo]         -- show what files are not needed"
 echo "$c" "integrity [repo]       -- perform a data integrity check"
@@ -571,4 +587,3 @@ exit
 fi
 
 usagehelp
-
