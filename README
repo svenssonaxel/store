@@ -1,16 +1,19 @@
 Introduction:
-"store" is a file storage and backup solution. Features include file and block level deduplication as well as compression.
+"store" is a file storage and backup solution. Features include file and "prefix" level deduplication as well as compression.
 
 Internally it has some resemblance to how git works, although with some differences:
 - It's designed to store files, not code. No merging, forking, diffing, branching etc.
 - Contrary to git it saves everything, including empty directories.
-- Saves and restores all file, directory and symlink properties: owner, group, all 9 permission settings, modification time, access time, file name and content. The only exception is modification/access time for symlinks which on many systems cannot be set in a decent way.
-- Automatically applies file level deduplication and compression when storing things in a repository. Block level deduplication is available on demand.
+- Saves and restores all file, directory and symlink properties: owner, group, all 9 permission settings, modification time, access time, name and content. The only exception is modification/access time for symlinks which on many systems cannot be set in a decent way.
+- Automatically applies file level deduplication and compression when storing things in a repository. Prefix deduplication, which deduplicates any common prefix longer than 1 KiB across files, is available on demand.
 - Slower than git although optimization is on the todo list. As a backup or storage system, speed is not as high a priority as it would be for a productivity tool.
+
+Installation:
+No installation required. Copy store to a directory on your path or run it directly.
 
 Usage:
 For usage help, run store without parameters
 
 Dependencies:
 It's a shell script and depends on core utils and things present on most systems. A full list:
-basename, bash, cat, chgrp, chmod, chown, date, dc, dd, diff, echo, grep, gunzip, gzip, ln, mkdir, mv, readlink, rm, sed, sha1sum, sort, tee, tempfile, test, touch, uniq, whoami
+basename, bash, cat, chgrp, chmod, chown, date, dc, dd, diff, echo, grep, gunzip, gzip, ln, ls, mkdir, mv, readlink, rm, sed, sha1sum, sort, tee, tempfile, test, touch, uniq, whoami
