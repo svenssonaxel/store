@@ -59,7 +59,7 @@ function dir-to-repo {
 (
 dn="`dir-wo-slash "$1"`"
 echo n"`basename "$dn"`"
-settings-from-dir "$dn"|sed -r 's/^/s/'
+settings-from-file "$dn"|sed -r 's/^/s/'
 dir-content-to-repo "$dn"|sed -r 's/^/c/'
 echo --directories 1 >&2;
 )|content-to-hash
@@ -68,9 +68,11 @@ echo --directories 1 >&2;
 function dir-content-to-repo {
 ls -1A "$1"|
 (while IFS="" read a_dctr; do
+if [ -h "$1"/"$a_dctr" ]; then echo l"`symlink-to-repo "$1"/"$a_dctr"`"
+else
 if [ -d "$1"/"$a_dctr" ]; then echo d"`dir-to-repo "$1"/"$a_dctr"`"; fi
 if [ -f "$1"/"$a_dctr" ]; then echo f"`file-to-repo "$1"/"$a_dctr"`"; fi
-if [ -h "$1"/"$a_dctr" ]; then echo l"`symlink-to-repo "$1"/"$a_dctr"`"; fi
+fi
 done
 )|sort
 }
@@ -120,6 +122,7 @@ function symlink-to-repo {
 (
 echo n"`basename "$1"`"
 echo l"`readlink "$1"`"
+settings-from-file "$1"|sed -r 's/^/s/'
 echo --symlinks 1 >&2;
 echo --bytes-a "`file-size "$1"`" >&2; 
 )|content-to-hash
@@ -152,7 +155,7 @@ name="`echo "$tf_dfr"|grep -E '^n'|sed -r 's/^.//'`"
 ndir="$2"/"$name"
 mkdir "$ndir"
 echo "$tf_dfr"|grep -E '^c'|sed -r 's/^.//'| dir-content-from-repo "$ndir"
-echo "$tf_dfr"|grep -E '^s'|sed -r 's/^.//'| settings-to-dir "$ndir"
+echo "$tf_dfr"|grep -E '^s'|sed -r 's/^.//'| settings-to-file "$ndir"
 }
 
 function dir-content-from-repo {
@@ -194,23 +197,19 @@ function symlink-from-repo {
 name="`hash-to-content "$1"|grep -E '^n'|sed -r 's/^.//'`"
 link="`hash-to-content "$1"|grep -E '^l'|sed -r 's/^.//'`"
 ln -s "$link" "$2"/"$name"
-}
-
-function settings-from-dir {
-settings-from-file "$1"
-}
-
-function settings-to-dir {
-settings-to-file "$1"
+hash-to-content "$1"|grep -E '^s'|sed -r 's/^.//'| settings-to-file "$2"/"$name"
 }
 
 function settings-from-file {
 lsld="`ls -ld --full-time "$1"`"
-echo p"`echo "$lsld"|sed -r 's/^.(.........).*$/\1/'`"
 echo o"`echo "$lsld"|sed -r 's/^[^ ]+\ +[0-9]+\ +([^ ]+).*$/\1/'`"
 echo g"`echo "$lsld"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +([^ ]+).*$/\1/'`"
+#no support for symlink modification/access times
+if [ ! -h "$1" ]; then
+echo p"`echo "$lsld"|sed -r 's/^.(.........).*$/\1/'`"
 echo m"`echo "$lsld"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`"
 echo a"`ls -ldu --full-time "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`"
+fi
 }
 
 function settings-to-file {
@@ -218,8 +217,8 @@ while IFS="" read a; do
 attribute="`echo "$a"|sed -r 's/^(.).*$/\1/'`"
 value="`echo "$a"|sed -r 's/^.//'`"
 if [ "$attribute" == "p" ]; then perm-to-file "$value" "$1"; fi
-if [ "$attribute" == "o" ]; then chown "$value" "$1"; fi
-if [ "$attribute" == "g" ]; then chgrp "$value" "$1"; fi
+if [ "$attribute" == "o" ]; then chown -h "$value" "$1"; fi
+if [ "$attribute" == "g" ]; then chgrp -h "$value" "$1"; fi
 if [ "$attribute" == "m" ]; then touch -md "$value" "$1"; fi
 if [ "$attribute" == "a" ]; then touch -ad "$value" "$1"; fi
 done
