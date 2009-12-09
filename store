@@ -10,6 +10,10 @@ mkdir -p "$repo"
 touch "$repo"/list
 }
 
+function hashsum {
+sha1sum|sed -r 's/^([^ ]*).*$/\1/'
+}
+
 function save-dir {
 init-repo
 statfile="`tmpfile`"
@@ -82,9 +86,9 @@ ls -ld "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +([0-9]+)\ .*$/\1/'
 function content-to-hash {
 tf_cth="`tmpfile`"; tfgz="`tmpfile`"
 cat > "$tf_cth"
-h="`sha1sum "$tf_cth"`"
+h="`cat "$tf_cth"|hashsum`"
 h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
-h2="`echo "$h"|sed -r 's/^..([^ ]*).*$/\1/'`"
+h2="`echo "$h"|sed -r 's/^..//'`"
 if [ -f "$repo"/$h1/$h2 -o -f "$repo"/$h1/$h2.gz ];
 then rm "$tf_cth"; rm "$tfgz"
 else mkdir -p "$repo"/$h1
@@ -103,9 +107,9 @@ function file-to-repo {
 (
 echo n"`basename "$1"`"
 settings-from-file "$1"|sed -r 's/^/s/'
-h="`sha1sum "$1"`"
+h="`cat "$1"|hashsum`"
 h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
-h2="`echo "$h"|sed -r 's/^..([^ ]*).*$/\1/'`"
+h2="`echo "$h"|sed -r 's/^..//'`"
 echo --files 1 >&2;
 echo --bytes-a "`file-size "$1"`" >&2; 
 if [ -f "$repo"/$h1/$h2.cat -o -f "$repo"/$h1/$h2.gz -o -f "$repo"/$h1/$h2 ]; then echo c$h1$h2; else echo c"`cat "$1"|content-to-hash`"; fi
@@ -320,7 +324,7 @@ diff <(files-existing) <(all-files-referenced)|grep -E '^<'|sed -r 's/^< //'
 function check-sum-errors {
 nodes-existing|
 (while IFS="" read hash_cse; do
-checksum="`hash-to-content "$hash_cse"|sha1sum|sed -r 's/^([^ ]*).*$/\1/'`"
+checksum="`hash-to-content "$hash_cse"|hashsum`"
 if [ ! "$checksum" == "$hash_cse" ]; then echo "$hash_cse $checksum";fi
 done)
 }
@@ -418,7 +422,7 @@ dd if="$1" bs=1 count="$hl" skip="$2" 2>/dev/null
 }
 
 function hash-from-file-part {
-file-part "$1" "$2" "$3"|sha1sum|sed -r 's/\ .*$//'
+file-part "$1" "$2" "$3"|hashsum
 }
 
 function common-prefixl-of {
@@ -452,7 +456,7 @@ rm "$cf1" "$cf2" "$nf1" "$nf2" "$nf3"
 
 function make-cat {
 if [ "`file-size "$1"`" -eq 0 -o "`file-size "$2"`" -eq 0 ]; then return;fi
-nch="`cat "$1" "$2"|sha1sum|sed -r 's/\ .*$//'`"
+nch="`cat "$1" "$2"|hashsum`"
 ncf="$repo/`echo "$nch"|sed -r 's/^(..)/\1\//'`.cat"
 (cat "$1"|content-to-hash;cat "$2"|content-to-hash)>"$ncf" 2>/dev/null
 echo "$nch"
@@ -468,7 +472,7 @@ if [ "`hash-to-filename "$h_upi"|grep -Ec '\.cat$'`" == "1" ]
 then tf_upi="`tmpfile`"
      cat "$1"|grep -Fv " $h_upi">"$tf_upi"
      mv "$tf_upi" "$1"
-else echo "`hash-to-content "$h_upi"|dd count=1 bs=$prefixl 2>/dev/null|sha1sum|sed -r 's/\ .*$//'` $h_upi" >> "$1"
+else echo "`hash-to-content "$h_upi"|dd count=1 bs=$prefixl 2>/dev/null|hashsum` $h_upi" >> "$1"
 fi
 done
 tf_upi="`tmpfile`";cat "$1"|sort|uniq>"$tf_upi";mv "$tf_upi" "$1"
@@ -479,8 +483,8 @@ prefixl=1024
 echog "Deduplicating file prefixes (minimum length $prefixl bytes)..."
 dtf="`tmpfile`"
 nodes-existing|update-prefix-index "$dtf"
-while [ ! "$dtfh" == "`sha1sum "$dtf"`" ]; do
-dtfh="`sha1sum "$dtf"`"
+while [ ! "$dtfh" == "`cat "$dtf"|hashsum`" ]; do
+dtfh="`cat "$dtf"|hashsum`"
 dih2="";dip2="";cat "$dtf"|(while read dip dih; do
 if [ "$dip" == "$dip2" ]; then
 dedup-prefix "$dih" "$dih2"|update-prefix-index "$dtf";break
@@ -516,7 +520,7 @@ if [ "`echo "$path"|grep -Ec '\.cat$'`" == "1" ]
 then cat "`hash-to-filename "$a_ccf"`"
 else echo "$a_ccf"
 fi; done)>"$tf_ccf"
-if [ ! "`cat "$tf_ccf"|sha1sum`" == "`cat "$f"|sha1sum`" ]
+if [ ! "`cat "$tf_ccf"|hashsum`" == "`cat "$f"|hashsum`" ]
 then echo "$1"; mv "$tf_ccf" "$f"
 else rm "$tf_ccf"
 fi
