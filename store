@@ -204,7 +204,8 @@ function settings-from-file {
 lsld="`ls -ld --full-time "$1"`"
 echo o"`echo "$lsld"|sed -r 's/^[^ ]+\ +[0-9]+\ +([^ ]+).*$/\1/'`"
 echo g"`echo "$lsld"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +([^ ]+).*$/\1/'`"
-#no support for symlink modification/access times
+#no support for symlink modification/access times.
+#Save them anyways?
 if [ ! -h "$1" ]; then
 echo p"`echo "$lsld"|sed -r 's/^.(.........).*$/\1/'`"
 echo m"`echo "$lsld"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`"
@@ -416,8 +417,30 @@ gc listonly
 }
 
 function file-part {
+
 let hl="$3"-"$2"
-dd if="$1" bs=1 count="$hl" skip="$2" 2>/dev/null
+if [ "$hl" -lt 1028 ]
+then dd if="$1" bs=1 count="$hl" skip="$2" 2>/dev/null
+else
+
+let tsp="$2"/1024*1024
+if [ ! "$tsp" -eq "$2" ]
+then let tsp="$tsp"+1024
+     (file-part "$1" "$2" "$tsp")
+     (file-part "$1" "$tsp" "$3")
+else
+
+let tep="$3"/1024*1024
+if [ ! "$tep" -eq "$3" ]
+then (file-part "$1" "$2" "$tep")
+     (file-part "$1" "$tep" "$3")
+else
+
+let tsp="$2"/1024
+let tep="$3"/1024
+let hl="$tep"-"$tsp"
+dd if="$1" bs=1024 count="$hl" skip="$tsp" 2>/dev/null
+fi;fi;fi
 }
 
 function hash-from-file-part {
@@ -429,10 +452,8 @@ f1="$1"
 f2="$2"
 ep="`file-size "$f1"`"
 l2="`file-size "$f2"`"
-echo dbg l2= "$l2" ep= "$ep" >&2
 if [ "$l2" -lt "$ep" ]; then ep="$l2";fi
 bp="0"
-echo dbg bp= "$bp" ep= "$ep" >&2
 while [ "$bp" -lt "$ep" ]; do
 let np=("$ep"-"$bp")/2+"$bp"
 if [ "$np" == "$bp" ]; then nbp="$ep"; else nbp="$np";fi
