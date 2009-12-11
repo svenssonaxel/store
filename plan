@@ -1,0 +1,8 @@
+function for listing all paths in repo to a certain hash
+cache for settings and statistics
+set command for settings, e.g. what to store
+in repo, folders: obj, (tmp/)cac(he), tmp, sys for list and settings
+extract certain folder, browser?
+Possibility to comment objects based on hash (weather or not they're in the repository?)
+Restoring atime in save operation, otherwise all directory/file objects will change over time and bloat the repo
+optimize nodes-referenced in gc to be breadth-first
