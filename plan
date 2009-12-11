@@ -6,3 +6,7 @@ extract certain folder, browser?
 Possibility to comment objects based on hash (weather or not they're in the repository?)
 Restoring atime in save operation, otherwise all directory/file objects will change over time and bloat the repo
 optimize nodes-referenced in gc to be breadth-first
+is deduplication doing everything twice? what happens when three (more than two) files in a row have the save prefix?
+is deduplication doing everything twice? what happens when three (more than two) files in a row have the same prefix?
+yep, look in the log for 712cad08015f5577.. it is replaced two times consecutively
+prefix deduplication is chewing too much binary zeroes. How can it be fixed? Is it even good in the first place?
