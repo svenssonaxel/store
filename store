@@ -6,7 +6,7 @@ cat "$repo"/list|grep -E "$1"
 }
 
 function init-repo {
-mkdir -p "$repo"
+mkdir -p "$repo"/tmp
 touch "$repo"/list
 }
 
@@ -230,7 +230,7 @@ chmod "`echo "$1"|sed -r 's/--x/1/g;s/-w-/2/g;s/-wx/3/g;s/r--/4/g;s/r-x/5/g;s/rw
 }
 
 function tmpfile {
-tempfile -d "$repo"
+tempfile -d "$repo"/tmp
 }
 
 function echor {
