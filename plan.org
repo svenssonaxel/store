@@ -25,11 +25,13 @@ location might be counter intuitive.
 *** extract certain folder, browser?
 *** function for listing all paths in repo to a certain hash
 * Misc.
-** TODO in repo, folders: obj, (tmp/)cac(he), tmp, sys for list and settings
+** DONE in repo, folders: obj, (tmp/)cac(he), tmp, sys for list and settings
+   CLOSED: [2009-12-12 Sat 17:53]
 No need to change format for list.
 Settings can be a single file, just store it in repo.
 cache folder can be added if cache is implemented (hopefully not)
 don't change obj folders.
 whatever, tmp can be a folder
-*** TODO change init-repo and tmpfile to have repo/tmp
+*** DONE change init-repo and tmpfile to have repo/tmp
+    CLOSED: [2009-12-12 Sat 17:53]
 
