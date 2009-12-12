@@ -1,0 +1,35 @@
+* More intuitive ways to load from or read a repo
+** extract certain folder, browser?
+** function for listing all paths in repo to a certain hash
+* Optimization
+** TODO Restoring atime in save operation
+otherwise all directory/file objects will change over time and bloat the repo
+** cache for statistics
+Perhaps not needed if gc and deduplication can be sufficiently optimized
+** Optimize prefix deduplication
+*** optimize nodes-referenced in gc to be breadth-first
+**** TODO Check first if this really takes so long
+*** TODO is deduplication doing everything twice? fix it.
+what happens when three (more than two) files in a row have the same prefix?
+yep, look in the log for 712cad08015f5577.. it is replaced two times consecutively
+*** DONE prefix deduplication is chewing too much binary zeroes.
+    CLOSED: [2009-12-12 Sat 16:49]
+How can it be fixed? Is it even good in the first place?
+Maybe it would help just setting prefixl a lot higher, like perhaps 5MiB instead of 1KiB
+Considering the extra storage space for .cat files along with gzip performance on null data, 5MiB seems like a good prefixl value.
+* New functionality
+** TODO set command for settings, e.g. what to store
+** Possibility to comment objects based on hash
+weather or not they're in the repository? This would be a destructive operation,
+since changing a comment for a certain hash would overwrite the old one. Also,
+automatically overwriting the comment for all identical files no matter of
+location might be counter intuitive.
+* Misc.
+** TODO in repo, folders: obj, (tmp/)cac(he), tmp, sys for list and settings
+No need to change format for list.
+Settings can be a single file, just store it in repo.
+cache folder can be added if cache is implemented (hopefully not)
+don't change obj folders.
+whatever, tmp can be a folder
+*** TODO change init-repo and tmpfile to have repo/tmp
+
