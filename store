@@ -492,7 +492,9 @@ if [ "`hash-to-filename "$h_upi"|grep -Ec '\.cat$'`" == "1" ]
 then tf_upi="`tmpfile`"
      cat "$1"|grep -Fv " $h_upi">"$tf_upi"
      mv "$tf_upi" "$1"
-else echo "`hash-to-content "$h_upi"|dd count=1 bs=$prefixl 2>/dev/null|hashsum` $h_upi" >> "$1"
+else
+prefh="`hash-to-content "$h_upi"|dd count=1 bs=$prefixl 2>/dev/null|hashsum`"
+if [ ! "$prefh" == "$h_upi" ]; then echo "$prefh $h_upi" >> "$1";fi
 fi
 done
 tf_upi="`tmpfile`";cat "$1"|sort|uniq>"$tf_upi";mv "$tf_upi" "$1"
@@ -501,19 +503,17 @@ tf_upi="`tmpfile`";cat "$1"|sort|uniq>"$tf_upi";mv "$tf_upi" "$1"
 function deduplicate {
 prefixl=1024
 echog "Deduplicating file prefixes (minimum length $prefixl bytes)..."
-dtf="`tmpfile`"
+dtf="`tmpfile`";dtf2="`tmpfile`"
 nodes-existing|update-prefix-index "$dtf"
 while [ ! "$dtfh" == "`cat "$dtf"|hashsum`" ]; do
 dtfh="`cat "$dtf"|hashsum`"
-dih2="";dip2="";cat "$dtf"|(while read dip dih; do
-if [ "$dip" == "$dip2" ]; then
-dedup-prefix "$dih" "$dih2"|update-prefix-index "$dtf";break
-fi
-dih2="$dih"
-dip2="$dip"
-done)
+cp "$dtf" "$dtf2"
+dih2="";dip2="";cat "$dtf2"|(while read dip dih; do
+if [ "$dip" == "$dip2" ]; then dedup-prefix "$dih" "$dih2";fi
+dih2="$dih";dip2="$dip"
+done)|update-prefix-index "$dtf"
 done
-rm "$dtf"
+rm "$dtf" "$dtf2"
 echog "Compiling concatenation files..."
 cat-compile
 echog "Done. You might want to perform a garbage collect now."
