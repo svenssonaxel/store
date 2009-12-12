@@ -501,7 +501,7 @@ tf_upi="`tmpfile`";cat "$1"|sort|uniq>"$tf_upi";mv "$tf_upi" "$1"
 }
 
 function deduplicate {
-prefixl=1024
+prefixl=5242880
 echog "Deduplicating file prefixes (minimum length $prefixl bytes)..."
 dtf="`tmpfile`";dtf2="`tmpfile`"
 nodes-existing|update-prefix-index "$dtf"
