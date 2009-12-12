@@ -1,6 +1,3 @@
-* More intuitive ways to load from or read a repo
-** extract certain folder, browser?
-** function for listing all paths in repo to a certain hash
 * Optimization
 ** TODO Restoring atime in save operation
 otherwise all directory/file objects will change over time and bloat the repo
@@ -24,6 +21,9 @@ weather or not they're in the repository? This would be a destructive operation,
 since changing a comment for a certain hash would overwrite the old one. Also,
 automatically overwriting the comment for all identical files no matter of
 location might be counter intuitive.
+** More intuitive ways to load from or read a repo
+*** extract certain folder, browser?
+*** function for listing all paths in repo to a certain hash
 * Misc.
 ** TODO in repo, folders: obj, (tmp/)cac(he), tmp, sys for list and settings
 No need to change format for list.
