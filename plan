@@ -10,3 +10,5 @@ is deduplication doing everything twice? what happens when three (more than two)
 is deduplication doing everything twice? what happens when three (more than two) files in a row have the same prefix?
 yep, look in the log for 712cad08015f5577.. it is replaced two times consecutively
 prefix deduplication is chewing too much binary zeroes. How can it be fixed? Is it even good in the first place?
+Maybe it would help just setting prefixl a lot higher, like perhaps 5MiB instead of 1KiB
+Considering the extra storage space for .cat files along with gzip performance on null data, 5MiB seems like a good prefixl value.
