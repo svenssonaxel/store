@@ -59,8 +59,10 @@ function dir-to-repo {
 (
 dn="`dir-wo-slash "$1"`"
 echo n"`basename "$dn"`"
+atime_dtr="`ls -ldu --full-time "$dn"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`"
 settings-from-file "$dn"|sed -r 's/^/s/'
-dir-content-to-repo "$dn"|sed -r 's/^/c/'
+(dir-content-to-repo "$dn"|sed -r 's/^/c/')
+touch -ad "$atime_dtr" "$dn"
 echo --directories 1 >&2;
 )|content-to-hash
 }
@@ -108,6 +110,7 @@ echo "$h1$h2"
 function file-to-repo {
 (
 echo n"`basename "$1"`"
+atime_ftr="`ls -ldu --full-time "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`"
 settings-from-file "$1"|sed -r 's/^/s/'
 h="`cat "$1"|hashsum`"
 h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
@@ -116,6 +119,7 @@ echo --files 1 >&2;
 echo --bytes-a "`file-size "$1"`" >&2; 
 if [ -f "$repo"/$h1/$h2.cat -o -f "$repo"/$h1/$h2.gz -o -f "$repo"/$h1/$h2 ]; then echo c$h1$h2; else echo c"`cat "$1"|content-to-hash`"; fi
 )|content-to-hash
+touch -ad "$atime_ftr" "$1"
 }
 
 function symlink-to-repo {
@@ -204,24 +208,23 @@ function settings-from-file {
 lsld="`ls -ld --full-time "$1"`"
 echo o"`echo "$lsld"|sed -r 's/^[^ ]+\ +[0-9]+\ +([^ ]+).*$/\1/'`"
 echo g"`echo "$lsld"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +([^ ]+).*$/\1/'`"
-#no support for symlink modification/access times.
-#Save them anyways?
-if [ ! -h "$1" ]; then
-echo p"`echo "$lsld"|sed -r 's/^.(.........).*$/\1/'`"
 echo m"`echo "$lsld"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`"
 echo a"`ls -ldu --full-time "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`"
-fi
+echo p"`echo "$lsld"|sed -r 's/^.(.........).*$/\1/'`"
 }
 
 function settings-to-file {
 while IFS="" read a; do
 attribute="`echo "$a"|sed -r 's/^(.).*$/\1/'`"
 value="`echo "$a"|sed -r 's/^.//'`"
-if [ "$attribute" == "p" ]; then perm-to-file "$value" "$1"; fi
 if [ "$attribute" == "o" ]; then chown -h "$value" "$1"; fi
 if [ "$attribute" == "g" ]; then chgrp -h "$value" "$1"; fi
+#no support for symlink modification/access times or permissions.
+if [ ! -h "$1" ]; then
 if [ "$attribute" == "m" ]; then touch -md "$value" "$1"; fi
 if [ "$attribute" == "a" ]; then touch -ad "$value" "$1"; fi
+if [ "$attribute" == "p" ]; then perm-to-file "$value" "$1"; fi
+fi
 done
 }
 
