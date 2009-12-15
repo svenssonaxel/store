@@ -423,7 +423,7 @@ function file-part {
 let hl="$3"-"$2"
 if [ "$hl" -lt 1028 ]
 then
-let tf_fp="`tmpfile`"
+tf_fp="`tmpfile`"
 dd if="$1" of="$tf_fp" bs=1 count="$hl" skip="$2" 2>/dev/null
 cat "$tf_fp"
 rm "$tf_fp"
@@ -445,7 +445,7 @@ else
 let tsp="$2"/1024
 let tep="$3"/1024
 let hl="$tep"-"$tsp"
-let tf_fp="`tmpfile`"
+tf_fp="`tmpfile`"
 dd if="$1" of="$tf_fp" bs=1024 count="$hl" skip="$tsp" 2>/dev/null
 cat "$tf_fp"
 rm "$tf_fp"
