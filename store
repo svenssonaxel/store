@@ -503,19 +503,22 @@ then tf_upi="`tmpfile`"
      mv "$tf_upi" "$1"
 else
 prefh_tf1="`tmpfile`"
-prefh_tf2="`tmpfile`"
 hash-to-content "$h_upi" > "$prefh_tf1"
+if [ "`file-size "$prefh_tf1"`" -gt "$prefixl" ]; then
+prefh_tf2="`tmpfile`"
 dd count=1 bs=$prefixl if="$prefh_tf1" of="$prefh_tf2" 2>/dev/null
 prefh="`cat "$prefh_tf2"|hashsum`"
-rm "$prefh_tf1" "$prefh_tf2"
-if [ ! "$prefh" == "$h_upi" ]; then echo "$prefh $h_upi" >> "$1";fi
+rm "$prefh_tf2"
+echo "$prefh $h_upi" >> "$1"
+fi
+rm "$prefh_tf1"
 fi
 done
 tf_upi="`tmpfile`";cat "$1"|sort|uniq>"$tf_upi";mv "$tf_upi" "$1"
 }
 
 function deduplicate {
-prefixl=5242880
+prefixl=1048576
 echog "Deduplicating file prefixes (minimum length $prefixl bytes)..."
 dtf="`tmpfile`";dtf2="`tmpfile`"
 nodes-existing|update-prefix-index "$dtf"
