@@ -420,10 +420,13 @@ gc listonly
 }
 
 function file-part {
-
 let hl="$3"-"$2"
 if [ "$hl" -lt 1028 ]
-then dd if="$1" bs=1 count="$hl" skip="$2" 2>/dev/null
+then
+let tf_fp="`tmpfile`"
+dd if="$1" of="$tf_fp" bs=1 count="$hl" skip="$2" 2>/dev/null
+cat "$tf_fp"
+rm "$tf_fp"
 else
 
 let tsp="$2"/1024*1024
@@ -442,7 +445,10 @@ else
 let tsp="$2"/1024
 let tep="$3"/1024
 let hl="$tep"-"$tsp"
-dd if="$1" bs=1024 count="$hl" skip="$tsp" 2>/dev/null
+let tf_fp="`tmpfile`"
+dd if="$1" of="$tf_fp" bs=1024 count="$hl" skip="$tsp" 2>/dev/null
+cat "$tf_fp"
+rm "$tf_fp"
 fi;fi;fi
 }
 
@@ -496,7 +502,12 @@ then tf_upi="`tmpfile`"
      cat "$1"|grep -Fv " $h_upi">"$tf_upi"
      mv "$tf_upi" "$1"
 else
-prefh="`hash-to-content "$h_upi"|dd count=1 bs=$prefixl 2>/dev/null|hashsum`"
+prefh_tf1="`tmpfile`"
+prefh_tf2="`tmpfile`"
+hash-to-content "$h_upi" > "$prefh_tf1"
+dd count=1 bs=$prefixl if="$prefh_tf1" of="$prefh_tf2" 2>/dev/null
+prefh="`cat "$prefh_tf2"|hashsum`"
+rm "$prefh_tf1" "$prefh_tf2"
 if [ ! "$prefh" == "$h_upi" ]; then echo "$prefh $h_upi" >> "$1";fi
 fi
 done
