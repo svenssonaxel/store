@@ -568,67 +568,65 @@ fi
 }
 
 function usagehelp {
-echo ""
-echo Usage:
-c="`if [ ! "$(whoami)" == "root" ]; then echo "sudo "; fi`""$0"
-echo "$c" "save dir [repo]        -- save a snapshot of directory dir"
-echo "$c" "load snap todir [repo] -- extract snapshot snap to directory todir"
-echo "$c" "list [pattern] [repo]  -- list the snapshots matching pattern"
-echo "$c" "stat snap [repo]       -- show information about snapshot snap"
-echo "$c" "deduplicate [repo]     -- perform prefix deduplication to use even less diskspace"
-echo "$c" "gc [repo]              -- garbage collect a repository (delete unused files)"
-echo "$c" "gc-list [repo]         -- show what files are not needed"
-echo "$c" "integrity [repo]       -- perform a data integrity check"
-echo "$c" "                       -- see this help"
-echo ""
-echo "repo is the path to the repository to operate on."
-echo "repo defaults to [current working directory]/repo"
-echo ""
+cat <<EOF
+
+Usage:
+`if [ ! "$(whoami)" == "root" ]; then echo "sudo "; fi`$0 [options] command parameters
+
+Commands with parameters are:
+   save dir        -- save a snapshot of directory dir
+   load snap todir -- extract snapshot snap to directory todir
+   list [pattern]  -- list the snapshots matching pattern
+   stat snap       -- show information about snapshot snap
+   deduplicate     -- perform prefix deduplication to use even less diskspace
+   gc              -- garbage collect a repository (delete unused files)
+   gc-list         -- show what files are not needed
+   integrity       -- perform a data integrity check
+   help            -- see this help
+
+Options are:
+--repo path        -- work on repository in path
+                      instead of [current working directory]/repo
+
+EOF
 }
 
 if [ ! "`whoami`" == "root" ]; then usagehelp; exit; fi
 
-if [ "$1" == "save" ];
-then dir="$2"; repo="$3"
-if [ "$repo" == "" ]; then repo="repo"; fi
-if [ ! -d "$dir" ]; then echo "Directory does not exist"; exit; fi
-save-dir "$dir"
-exit
-fi
+repo="repo"
+while [ "`echo "$1"|sed -r 's/^(..).*$/\1/'`" == "--" ]; do
+ case "$1" in
+  "--repo")
+   shift
+   repo="$1"
+   ;;
+  *)
+   echo "Unrecongnized option: $1"
+   exit
+ esac
+shift
+done
 
-if [ "$1" == "list" ];
-then pattern="$2" repo="$3"
-if [ "$repo" == "" ]; then repo="repo"; fi
-list-dir "$pattern"
-exit
-fi
-
-if [ "$1" == "load" ];
-then dir="$2"; todir="$3"; repo="$4"
-if [ "$repo" == "" ]; then repo="repo"; fi
-if [ ! -d "$todir" ]; then echo "Target directory does not exist"; exit; fi
-load-dir "$dir" "$todir"
-exit
-fi
-
-if [ "$1" == "stat" ];
-then commit_stat="$2"; repo="$3"
-if [ "$repo" == "" ]; then repo="repo"; fi
-get-commit-stat "$commit_stat"
-exit
-fi
-
-if [ "$1" == "deduplicate" -o "$1" == "gc" -o "$1" == "gc-list" -o "$1" == "integrity" ];
-then repo="$2"
-if [ "$repo" == "" ]; then repo="repo"; fi
-$1
-exit
-fi
-
+cmd_main="$1"
+shift
+case "$cmd_main" in
+ "save")
+  if [ ! -d "$1" ]; then echo "Directory does not exist"; exit; fi
+  save-dir "$1"
+ "load")
+  if [ ! -d "$2" ]; then echo "Target directory does not exist"; exit; fi
+  load-dir "$1" "$2"
+ "list")
+  list-dir "$2"
+ "stat")
+  get-commit-stat "$1"
+ deduplicate|gc|gc-list|integrity)
+  $cmd_main
 #debugging
-if [ "$1" == "do" ]
-then repo="repo"; $2
-exit
-fi
-
-usagehelp
+ "do")
+  $1
+ "help")
+  usagehelp
+ *)
+  echo "Unknown command $cmd_main"
+esac
