@@ -7,7 +7,8 @@ Perhaps not needed if gc and deduplication can be sufficiently optimized
 ** Optimize prefix deduplication
 *** optimize nodes-referenced in gc to be breadth-first
 **** TODO Check first if this really takes so long
-*** TODO is deduplication doing everything twice? fix it.
+*** DONE is deduplication doing everything twice? fix it.
+    CLOSED: [2009-12-15 Tue 16:46]
 what happens when three (more than two) files in a row have the same prefix?
 yep, look in the log for 712cad08015f5577.. it is replaced two times consecutively
 *** DONE prefix deduplication is chewing too much binary zeroes.
