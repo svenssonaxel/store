@@ -512,8 +512,12 @@ while [ ! "$dtfh" == "`cat "$dtf"|hashsum`" ]; do
 dtfh="`cat "$dtf"|hashsum`"
 cp "$dtf" "$dtf2"
 dih2="";dip2="";cat "$dtf2"|(while read dip dih; do
-if [ "$dip" == "$dip2" ]; then dedup-prefix "$dih" "$dih2";fi
+if [ "$dip" == "$dip2" ]; then
+dedup-prefix "$dih" "$dih2"
+dip2="nothing"
+else
 dih2="$dih";dip2="$dip"
+fi
 done)|update-prefix-index "$dtf"
 done
 rm "$dtf" "$dtf2"
