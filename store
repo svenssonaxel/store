@@ -594,6 +594,7 @@ EOF
 if [ ! "`whoami`" == "root" ]; then usagehelp; exit; fi
 
 repo="repo"
+
 while [ "`echo "$1"|sed -r 's/^(..).*$/\1/'`" == "--" ]; do
  case "$1" in
   "--repo")
@@ -613,20 +614,27 @@ case "$cmd_main" in
  "save")
   if [ ! -d "$1" ]; then echo "Directory does not exist"; exit; fi
   save-dir "$1"
+  ;;
  "load")
   if [ ! -d "$2" ]; then echo "Target directory does not exist"; exit; fi
   load-dir "$1" "$2"
+  ;;
  "list")
   list-dir "$2"
+  ;;
  "stat")
   get-commit-stat "$1"
+  ;;
  deduplicate|gc|gc-list|integrity)
   $cmd_main
+  ;;
 #debugging
  "do")
   $1
+  ;;
  "help")
   usagehelp
+  ;;
  *)
   echo "Unknown command $cmd_main"
 esac
