@@ -518,7 +518,6 @@ tf_upi="`tmpfile`";cat "$1"|sort|uniq>"$tf_upi";mv "$tf_upi" "$1"
 }
 
 function deduplicate {
-prefixl=1048576
 echog "Deduplicating file prefixes (minimum length $prefixl bytes)..."
 dtf="`tmpfile`";dtf2="`tmpfile`"
 nodes-existing|update-prefix-index "$dtf"
@@ -594,6 +593,8 @@ Options are:
 --no-owner            file group or file permissions respectively.
 --no-group
 --no-perms
+--prefixl length   -- when deduplicating, only deduplicate file prefixes that
+                      are at least length bytes. default is 1048576.
 
 EOF
 }
@@ -606,6 +607,7 @@ use_mtime=yes
 use_owner=yes
 use_group=yes
 use_perms=yes
+prefixl=1048576
 while [ "`echo "$1"|sed -r 's/^(..).*$/\1/'`" == "--" ]; do
  case "$1" in
   "--repo")
@@ -626,6 +628,10 @@ while [ "`echo "$1"|sed -r 's/^(..).*$/\1/'`" == "--" ]; do
    ;;
   "--no-perms")
    use_perms=no
+   ;;
+  "--prefixl")
+   shift
+   if [ "$1" -gt 0 ]; then prefixl="$1";fi
    ;;
   *)
    echo "Unrecongnized option: $1"
