@@ -30,6 +30,13 @@ Changed it to only work on (temporary) files.
 **** DONE Check first if this really takes so long
 It takes forever. Of course it does, it's linear wrt number of nodes extracted
 whereas breadth first is linear wrt number of nodes in repository.
+** Change backend format
+Tens of thousands of files only a couple hundred bytes large are clogging the repo.
+Perhaps the format should be changed as to contain all data for a snapshot in a single file.
+To choose format, make code to save, then test total size.
+*** Option 0: Keep current format
+*** Option 1: A file tree listing with full relative path
+*** Option 2: Keep the current recursive model, make encapsule/discapsule stream functions.
 * New functionality
 ** DONE set command for settings, e.g. what to store
 Let's have command line options instead
