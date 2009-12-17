@@ -35,8 +35,11 @@ Tens of thousands of files only a couple hundred bytes large are clogging the re
 Perhaps the format should be changed as to contain all data for a snapshot in a single file.
 To choose format, make code to save, then test total size.
 *** Option 0: Keep current format
-*** Option 1: A file tree listing with full relative path
+c'mon, it's slow.
+*** TODO Option 1: A file tree listing with full relative path
+we're trying it.
 *** Option 2: Keep the current recursive model, make encapsule/discapsule stream functions.
+that would require some array notion as well. unnecessarily complicated and lazy.
 * New functionality
 ** DONE set command for settings, e.g. what to store
 Let's have command line options instead
