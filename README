@@ -14,7 +14,7 @@ Internally it has some resemblance to how git works, although with some differen
 - It's designed to store files, not code. No merging, forking, diffing, branching etc.
 - Contrary to git it saves everything, including empty directories.
 - Saves and restores all file, directory and symlink properties: owner, group, all 9 permission settings, modification time, access time, name and content. The only exception is modification/access time for symlinks which on many systems cannot be set in a decent way.
-- Automatically applies file level deduplication and compression when storing things in a repository. Prefix deduplication, which deduplicates any common prefix longer than 1 KiB across files, is available on demand.
+- Automatically applies file level deduplication and compression when storing things in a repository. Prefix deduplication, which deduplicates any common prefix across files (that is longer than a certain set size), is available on demand.
 - Slower than git although optimization is on the todo list. As a backup or storage system, speed is not as high a priority as it would be for a productivity tool.
 
 
