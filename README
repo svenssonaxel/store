@@ -1,3 +1,12 @@
+Status:
+Beta level. It works but perhaps shouldn't be considered stable.
+
+Command line interface is version 1.02. It won't change in an incompatible way until interface version 2.0. Do not use this version if you have scripts constructed for a version with an interface version prior to 1.0.
+
+Repository format is version 1.02. It won't change in an incompatible way until repository version 2.0. Do not use this version with repositories created/managed by a version with a repository version prior to 1.0.
+
+
+
 Introduction:
 "store" is a file storage and backup solution. Features include file and "prefix" level deduplication as well as compression.
 
@@ -8,11 +17,17 @@ Internally it has some resemblance to how git works, although with some differen
 - Automatically applies file level deduplication and compression when storing things in a repository. Prefix deduplication, which deduplicates any common prefix longer than 1 KiB across files, is available on demand.
 - Slower than git although optimization is on the todo list. As a backup or storage system, speed is not as high a priority as it would be for a productivity tool.
 
+
+
 Installation:
 No installation required. Copy store to a directory on your path or run it directly.
 
+
+
 Usage:
 For usage help, run store without parameters
+
+
 
 Dependencies:
 It's a shell script and depends on core utils and things present on most systems. A full list:
