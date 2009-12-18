@@ -3,6 +3,7 @@
 otherwise all directory/file objects will change over time and bloat the repo
 ** cache for statistics
 Perhaps not needed if gc and deduplication can be sufficiently optimized
+Probably not needed in repository 2.0
 ** Optimize prefix deduplication
 *** DONE is deduplication doing everything twice? fix it.
 what happens when three (more than two) files in a row have the same prefix?
@@ -12,21 +13,30 @@ How can it be fixed? Is it even good in the first place?
 Maybe it would help just setting prefixl a lot higher, like perhaps 5MiB instead of 1KiB
 Considering the extra storage space for .cat files along with gzip performance on null
 data, 5MiB seems like a good prefixl value.
-**** TODO Optimize statistically the value of prefixl
-***** prefixl=1MiB
-time ./store gc
-real    98m6.363s
-user    24m16.360s
-sys     27m51.770s
+**** DONE Optimize statistically the value of prefixl
+$ grep -Fc respective log[1-5]
+log1:19
+log2:23
+log3:27
+log4:315
+log5:322
 
-du -s repo-bu repo
-12597020        repo-bu
-12581844        repo
+$ cat loga|sed -r 's/^([0-9]*)\t.*$/22223812 \1 -p/'|dc
+5008
+6480
+7184
+10460
+10952
+0
+
+OK, seems like we're picking option #5: prefixl=131072
+Further optimizeation would supposedly decrease this
 **** DONE Something's wrong, found prefixes are shorter. Debug it
 dd on streams obviously produces more or less random results.
 Changed it to only work on (temporary) files.
 ** Optimize integrity check
-*** TODO optimize nodes-referenced in gc to be breadth-first
+*** DONE optimize nodes-referenced in gc to be breadth-first
+with repository 2.0 format this is unnecessary, or even close to the same thing
 **** DONE Check first if this really takes so long
 It takes forever. Of course it does, it's linear wrt number of nodes extracted
 whereas breadth first is linear wrt number of nodes in repository.
@@ -36,10 +46,13 @@ Perhaps the format should be changed as to contain all data for a snapshot in a 
 To choose format, make code to save, then test total size.
 *** Option 0: Keep current format
 c'mon, it's slow.
-*** TODO Option 1: A file tree listing with full relative path
+*** DONE Option 1: A file tree listing with full relative path
 we're trying it.
 *** Option 2: Keep the current recursive model, make encapsule/discapsule stream functions.
 that would require some array notion as well. unnecessarily complicated and lazy.
+** TODO Optimize streaming
+use pipes (tee, <(), >()) instead of temporary files where possible
+for example in content-to-hash
 * New functionality
 ** DONE set command for settings, e.g. what to store
 Let's have command line options instead
@@ -51,7 +64,9 @@ Let's have command line options instead
 --no-perms
 *** DONE Implement them
 *** TODO Test command line options, including --repo
+--repo seems to work
 *** TODO save operation using atime (not --no-atime) still alters atime
+is this problem still present in repository 2.0?
 ** Possibility to comment objects based on hash
 weather or not they're in the repository? This would be a destructive operation,
 since changing a comment for a certain hash would overwrite the old one. Also,
@@ -68,3 +83,4 @@ cache folder can be added if cache is implemented (hopefully not)
 don't change obj folders.
 whatever, tmp can be a folder
 *** DONE change init-repo and tmpfile to have repo/tmp
+** TODO pattern doesn't work with list
