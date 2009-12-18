@@ -2,12 +2,12 @@
 
 function list-dir {
 init-repo
-cat "$repo"/list|grep -E "$1"
+cat "$list"|grep -E "$1"
 }
 
 function init-repo {
 mkdir -p "$repo"/tmp
-touch "$repo"/list
+touch "$list"
 }
 
 function hashsum {
@@ -24,8 +24,8 @@ date="`date +%Y%m%d%H%M`"
 cat "$statfile2" >> "$statfile"
 commithash_sd="`(echo d$date;echo c$dirhash;create-commit-stat "$statfile"|sed -r 's/^/s/')|content-to-hash 2>/dev/null`"
 saveline="${dirname}_${date}_$commithash_sd"
-if [ "`grep -Fc "$saveline" "$repo"/list`" -eq "0" ]
-then echo "$saveline" >> "$repo"/list
+if [ "`grep -Fc "$saveline" "$list"`" -eq "0" ]
+then echo "$saveline" >> "$list"
 fi
 rm "$statfile" "$statfile2"
 echo ""
@@ -83,13 +83,18 @@ nodeinfo="`echo "$a"|sed -r 's/^(.)(.*\t)n([^\t]+)$/\2/'`"
 nodepath="`echo "$a"|sed -r 's/^(.)(.*\t)n([^\t]+)$/\3/'`"
 echo -n "$nodetype$nodeinfo"
 if [ "$use_atime" ]; then echo -ne "a`ls -ldu --full-time "$nodepath"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+)\ .*$/\1/'`\t";fi
-if [ "$nodetype" == "-" ]; then echo -ne "h`cat "$dnpref$nodepath"|content-to-hash`\t";fi
+if [ "$nodetype" == "-" ]; then echo -ne "h`file-content-to-hash "$dnpref$nodepath"`\t";fi
 #if [ ! "$nodetype" == "d" ]; then
 echo "--bytes-a `echo "$nodeinfo"|sed -r 's/^.*\ts([0-9]+)\t.*$/\1/'`" >&2
 #fi
 echo "`echo "$nodetype"|sed -r 's/^-$/--files/;s/^d$/--directories/;s/^l$/--symlinks/'`" 1 >&2
 echo "n$nodepath"
 done)
+}
+
+function file-content-to-hash {
+fcth="`cat "$1"|hashsum`"
+if [ "`hash-to-filename "$fcth"`" ]; then echo "$fcth"; else cat "$1"|content-to-hash;fi
 }
 
 function dir-wo-slash {
@@ -102,8 +107,7 @@ ls -ld "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +([0-9]+)\ .*$/\1/'
 
 function content-to-hash {
 tf_cth="`tmpfile`"; tfgz="`tmpfile`"
-cat > "$tf_cth"
-h="`cat "$tf_cth"|hashsum`"
+h="`cat|tee "$tf_cth"|hashsum`"
 h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
 h2="`echo "$h"|sed -r 's/^..//'`"
 if [ -f "$repo"/$h1/$h2 -o -f "$repo"/$h1/$h2.gz ];
@@ -121,16 +125,16 @@ echo "$h1$h2"
 }
 
 function select-commit {
-if [ "`cat "$repo"/list|grep -Fc "$1"`" -gt "1" ];
+if [ "`cat "$list"|grep -Fc "$1"`" -gt "1" ];
 then echor "More than one snapshot matches:" >&2
-cat "$repo"/list|grep -F "$1" 1>&2
+cat "$list"|grep -F "$1" 1>&2
 return
 fi
-if [ "`cat "$repo"/list|grep -Fc "$1"`" -eq "0" ];
+if [ "`cat "$list"|grep -Fc "$1"`" -eq "0" ];
 then echor "No directory matches." >&2
 return
 fi
-cat "$repo"/list|grep -F "$1"
+cat "$list"|grep -F "$1"
 }
 
 function load-dir {
@@ -218,7 +222,6 @@ echo -ne '\e[0m'
 }
 
 function hash-to-filename {
-if [ "$1" == "-" ]; then echo "$repo"/list; else
 h1="`echo "$1"|sed -r 's/^(..).*$/\1/'`"
 h2="`echo "$1"|sed -r 's/^..([^ ]*).*$/\1/'`"
 if [ -f "$repo"/$h1/$h2.cat ]
@@ -229,7 +232,6 @@ then echo "$repo"/$h1/$h2.gz
 else
 if [ -f "$repo"/$h1/$h2 ]
 then echo "$repo"/$h1/$h2
-fi
 fi
 fi
 fi
@@ -245,7 +247,7 @@ ls -1A "$repo"|grep -E '^[0-9a-f]{2}$'|(while IFS="" read a; do ls -1A "$repo/$a
 
 function all-nodes-referenced {
 #fixme: include .cat content
-cat "$repo"/list|
+cat "$list"|
 sed -r 's/^.*_([0-9a-f]+)$/\1/'|
 (while read a; do
 echo $a
@@ -283,9 +285,9 @@ check-sum-errors|sed -r 's/^(.*)\ (.*)$/Node \1 has unmatching checksum \2/'
 }
 
 function all-nodes-integrity {
-if [ "`grep -Ecv '_[0-9]{12}_[0-9a-f]{40}$' "$repo"/list`" -gt 0 ]; then echo "list is corrupt"
+if [ "`grep -Ecv '_[0-9]{12}_[0-9a-f]{40}$' "$list"`" -gt 0 ]; then echo "list is corrupt"
 else
-cat "$repo"/list|
+cat "$list"|
 (while read aa; do
 a="`echo "$aa"|sed -r 's/^.*_([0-9a-f]+)$/\1/'`"
 if [ "`hash-to-content "$a"|grep -Ecv '^[scd]|^d[0-9]{12}|^c[0-9a-f]+$|^s.*: [0-9]+$'`" -gt 0 ];
@@ -412,6 +414,7 @@ rm "$cf1" "$cf2" "$nf1" "$nf2" "$nf3"
 
 function make-cat {
 if [ "`file-size "$1"`" -eq 0 -o "`file-size "$2"`" -eq 0 ]; then return;fi
+#fixme: optimize to read only once
 nch="`cat "$1" "$2"|hashsum`"
 ncf="$repo/`echo "$nch"|sed -r 's/^(..)/\1\//'`.cat"
 (cat "$1"|content-to-hash;cat "$2"|content-to-hash)>"$ncf" 2>/dev/null
@@ -484,7 +487,7 @@ tf_ccf="`tmpfile`"
 cat "$f"|(while IFS="" read a_ccf; do
 path="`hash-to-filename "$a_ccf"`"
 if [ "`echo "$path"|grep -Ec '\.cat$'`" == "1" ]
-then cat "`hash-to-filename "$a_ccf"`"
+then cat "$path"
 else echo "$a_ccf"
 fi; done)>"$tf_ccf"
 if [ ! "`cat "$tf_ccf"|hashsum`" == "`cat "$f"|hashsum`" ]
@@ -567,6 +570,7 @@ while [ "`echo "$1"|sed -r 's/^(..).*$/\1/'`" == "--" ]; do
  esac
 shift
 done
+list="$repo"/list
 
 cmd_main="$1"
 shift
@@ -580,7 +584,7 @@ case "$cmd_main" in
   load-dir "$1" "$2"
   ;;
  "list")
-  list-dir "$2"
+  list-dir "$1"
   ;;
  "stat")
   get-commit-stat "$1"
