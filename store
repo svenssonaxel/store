@@ -14,14 +14,6 @@ function hashsum {
 sha1sum|sed -r 's/^([^ ]*).*$/\1/'
 }
 
-function fromline {
-tr "\t" "\n"
-}
-
-function toline {
-tr "\n" "\t"
-}
-
 function save-dir {
 init-repo
 statfile="`tmpfile`"
@@ -56,13 +48,15 @@ cat|sed -r 's/^[^0-9]*([0-9]+)[^0-9]*$/\1+/'|(echo 0;cat;echo p)|dc
 }
 
 function create-commit-stat {
-echo "Bytes: `cat "$1"|grep -F -- --bytes-a|intsum`"
-echo "Files: `cat "$1"|grep -F -- --files|intsum`"
-echo "Directories: `cat "$1"|grep -F -- --directories|intsum`"
-echo "Symlinks: `cat "$1"|grep -F -- --symlinks|intsum`"
-echo "Nodes: `cat "$1"|grep -F -- --nodes|intsum`"
-echo "Bytes after deduplication: `cat "$1"|grep -F -- --bytes-d|intsum`"
-echo "Bytes after compression: `cat "$1"|grep -F -- --bytes-c|intsum`"
+cat <<EOF
+Bytes: `cat "$1"|grep -F -- --bytes-a|intsum`
+Files: `cat "$1"|grep -F -- --files|intsum`
+Directories: `cat "$1"|grep -F -- --directories|intsum`
+Symlinks: `cat "$1"|grep -F -- --symlinks|intsum`
+Nodes: `cat "$1"|grep -F -- --nodes|intsum`
+Bytes after deduplication: `cat "$1"|grep -F -- --bytes-d|intsum`
+Bytes after compression: `cat "$1"|grep -F -- --bytes-c|intsum`
+EOF
 }
 
 function dir-to-repo {
@@ -81,13 +75,19 @@ elif [ "$gfnd" -a "`echo "$a"|grep -Ec ':$'`" -gt 0 ]; then lpath="`echo "$a"|se
 elif [ "$gfnd" -a "`echo "$a"|grep -Ec '^total '`" -gt 0 ]; then gfnd=""
 else echo -n "$a";echo -ne "\t";echo "$lpath";fi
 done)|
-sed -r 's/^(.)(.........)\ +[0-9]+\ +([^ ]+)\ +([^ ]+)\ +([0-9]+)\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+)\ ([^\t]+)\t'"$rpat"'(.*)$/\1\t'"$uses"'s\5\tn\8\/\7/'|
+(echo -n "`ls -ld --full-time "$dn"`";echo -e "\t//";cat)|
+sed -r 's/^(.)(.........)\ +[0-9]+\ +([^ ]+)\ +([^ ]+)\ +([0-9]+)\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+)\ ([^\t]+)\t'"$rpat"'(.*)$/\1\t'"$uses"'s\5\tn\8\/\7/;s/\tn\/\/\//\tn/'|
 (while IFS="" read a; do
 nodetype="`echo "$a"|sed -r 's/^(.)(.*\t)n([^\t]+)$/\1/'`"
 nodeinfo="`echo "$a"|sed -r 's/^(.)(.*\t)n([^\t]+)$/\2/'`"
 nodepath="`echo "$a"|sed -r 's/^(.)(.*\t)n([^\t]+)$/\3/'`"
 echo -n "$nodetype$nodeinfo"
+if [ "$use_atime" ]; then echo -ne "a`ls -ldu --full-time "$nodepath"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+)\ .*$/\1/'`\t";fi
 if [ "$nodetype" == "-" ]; then echo -ne "h`cat "$dnpref$nodepath"|content-to-hash`\t";fi
+#if [ ! "$nodetype" == "d" ]; then
+echo "--bytes-a `echo "$nodeinfo"|sed -r 's/^.*\ts([0-9]+)\t.*$/\1/'`" >&2
+#fi
+echo "`echo "$nodetype"|sed -r 's/^-$/--files/;s/^d$/--directories/;s/^l$/--symlinks/'`" 1 >&2
 echo "n$nodepath"
 done)
 }
@@ -138,26 +138,31 @@ init-repo
 commithash_ld="`select-commit "$1"|sed -r 's/^.*_([^_]*)$/\1/'`"
 if [ "${commithash_ld}" == "" ]; then exit; fi
 dirhash="`hash-to-content "$commithash_ld"|grep -E '^c'|sed -r 's/^.//'`"
-dir-from-repo "$dirhash" "`dir-wo-slash "$2"`"
-}
-
-function dir-from-repo {
-tf_dfr="`hash-to-content "$1"`"
-name="`echo "$tf_dfr"|grep -E '^n'|sed -r 's/^.//'`"
-ndir="$2"/"$name"
-mkdir "$ndir"
-echo "$tf_dfr"|grep -E '^c'|sed -r 's/^.//'| dir-content-from-repo "$ndir"
-echo "$tf_dfr"|grep -E '^s'|sed -r 's/^.//'| settings-to-file "$ndir"
-}
-
-function dir-content-from-repo {
-while IFS="" read a_dcfr; do
-class="`echo "$a_dcfr"|sed -r 's/^(.).*$/\1/'`"
-hash_dcfr="`echo "$a_dcfr"|sed -r 's/^.//'`"
-if [ "$class" == "d" ]; then dir-from-repo "$hash_dcfr" "$1"; fi
-if [ "$class" == "f" ]; then file-from-repo "$hash_dcfr" "$1"; fi
-if [ "$class" == "l" ]; then symlink-from-repo "$hash_dcfr" "$1"; fi
+tf_dfr="`tmpfile`"
+to_dir="`dir-wo-slash "$2"`"
+hash-to-content "$dirhash" |
+while IFS="" read a; do
+nodetype="`echo "$a"|sed -r 's/^(.).*$/\1/'`"
+nodeinfo="`echo "$a"|sed -r 's/^.\t(.*)$/\1/;s/\t/\n/g'`"
+name="$2"/"`echo "$nodeinfo"|grep -E '^n'|sed -r 's/^.//'`"
+  if [ "$nodetype" == "d" ]; then
+mkdir "$name"
+elif [ "$nodetype" == "-" ]; then
+hash-to-content "`echo "$nodeinfo"|grep -E '^h'|sed -r 's/^.//'`" > "$name"
+elif [ "$nodetype" == "l" ]; then
+link="`echo "$name"|sed -r 's/^.* => //'`"
+name="`echo "$name"|sed -r 's/ => .*$//'`"
+ln -s "$link" "$name"
+fi
+echo "$nodeinfo"|grep -E "^[pogma]"|
+if [ "$nodetype" == "d" ]; then (cat;echo n"$name") >> "$tf_dfr"; else settings-to-file "$name";fi
 done
+tac "$tf_dfr"|while IFS="" read a; do
+tffl="`echo "$a"|sed -r 's/^(.).*$/\1/'`"
+tfre="`echo "$a"|sed -r 's/^.//'`"
+if [ "$tffl" == "n" ]; then name="$tfre"; else echo "$a"|settings-to-file "$name";fi
+done
+rm "$tf_dfr"
 }
 
 function hash-to-content {
@@ -175,21 +180,6 @@ then cat "$repo"/$h1/$h2
 fi
 fi
 fi
-}
-
-function file-from-repo {
-tfs="`hash-to-content "$1"`"
-name="`echo "$tfs"|grep -E '^n'|sed -r 's/^.//'`"
-nfile="$2"/"$name"
-hash-to-content "`echo "$tfs"|grep -E '^c'|sed -r 's/^.//'`" > "$nfile"
-echo "$tfs"|grep -E '^s'|sed -r 's/^.//'| settings-to-file "$nfile"
-}
-
-function symlink-from-repo {
-name="`hash-to-content "$1"|grep -E '^n'|sed -r 's/^.//'`"
-link="`hash-to-content "$1"|grep -E '^l'|sed -r 's/^.//'`"
-ln -s "$link" "$2"/"$name"
-hash-to-content "$1"|grep -E '^s'|sed -r 's/^.//'| settings-to-file "$2"/"$name"
 }
 
 function settings-to-file {
@@ -254,18 +244,21 @@ ls -1A "$repo"|grep -E '^[0-9a-f]{2}$'|(while IFS="" read a; do ls -1A "$repo/$a
 }
 
 function all-nodes-referenced {
+#fixme: include .cat content
 cat "$repo"/list|
 sed -r 's/^.*_([0-9a-f]+)$/\1/'|
 (while read a; do
-echo a
-hash-to-content "$a"|grep -E '\th[0-9a-f]+\t'|sed -r 's/^.*\th([0-9a-f]+)\t.*$/\1/'
+echo $a
+dirhash="`hash-to-content "$a"|grep -E '^c'|sed -r 's/^.//'`"
+echo $dirhash
+hash-to-content "$dirhash"|grep -E "`echo -e "\t"`"'h[0-9a-f]+'"`echo -e "\t"`"|sed -r 's/^.*\th([0-9a-f]+)\t.*$/\1/'
 done)|sort|uniq
 }
 
 function all-files-referenced {
 all-nodes-referenced|
 (while IFS="" read a_afr; do
-`hash-to-filename "$a_afr"`
+echo `hash-to-filename "$a_afr"`
 done)|sort
 }
 
@@ -290,13 +283,16 @@ check-sum-errors|sed -r 's/^(.*)\ (.*)$/Node \1 has unmatching checksum \2/'
 }
 
 function all-nodes-integrity {
-if [ "`grep -Ecv '_[0-9]{12}_[0-9a-f]{40}$'`" -gt 0 ]; then echo "list is corrupt"
+if [ "`grep -Ecv '_[0-9]{12}_[0-9a-f]{40}$' "$repo"/list`" -gt 0 ]; then echo "list is corrupt"
 else
 cat "$repo"/list|
 (while read aa; do
 a="`echo "$aa"|sed -r 's/^.*_([0-9a-f]+)$/\1/'`"
-if [ "`hash-to-content "$a"|grep -Ec '^[^dl-]|^[dl].*\t[^pogmn]|^-.*\t[^pogmanh]'`" -gt 0 ];
+if [ "`hash-to-content "$a"|grep -Ecv '^[scd]|^d[0-9]{12}|^c[0-9a-f]+$|^s.*: [0-9]+$'`" -gt 0 ];
 then echo "snapshot $aa is corrupt"
+else
+sscont="`hash-to-content "$a"|grep -E '^c'|sed -r 's/^.//'`"
+if [ "`hash-to-content "$sscont"|grep -Ec '^[^dl-]|^[dl].*	[^spogman]|^-.*	[^spogmanh]'`" -gt 0 ]; then echo "file list in snapshot $aa is corrupt"; fi
 fi;done)
 fi
 }
@@ -538,7 +534,7 @@ use_mtime=yes
 use_owner=yes
 use_group=yes
 use_perms=yes
-defaultprefixl=1048576
+defaultprefixl=131072
 prefixl=$defaultprefixl
 while [ "`echo "$1"|sed -r 's/^(..).*$/\1/'`" == "--" ]; do
  case "$1" in
@@ -596,7 +592,7 @@ case "$cmd_main" in
  "do")
   $1
   ;;
- "help")
+ "help"|"")
   usagehelp
   ;;
  *)
