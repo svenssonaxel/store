@@ -14,18 +14,28 @@ function hashsum {
 sha1sum|sed -r 's/^([^ ]*).*$/\1/'
 }
 
+function fromline {
+tr "\t" "\n"
+}
+
+function toline {
+tr "\n" "\t"
+}
+
 function save-dir {
 init-repo
 statfile="`tmpfile`"
+statfile2="`tmpfile`"
 dirname="`basename "$1"`"
-dirhash="`dir-to-repo "$1" 2>"$statfile"`"
+dirhash="`dir-to-repo "$1" 2> "$statfile" | content-to-hash 2>"$statfile2"`"
 date="`date +%Y%m%d%H%M`"
+cat "$statfile2" >> "$statfile"
 commithash_sd="`(echo d$date;echo c$dirhash;create-commit-stat "$statfile"|sed -r 's/^/s/')|content-to-hash 2>/dev/null`"
 saveline="${dirname}_${date}_$commithash_sd"
 if [ "`grep -Fc "$saveline" "$repo"/list`" -eq "0" ]
 then echo "$saveline" >> "$repo"/list
 fi
-rm "$statfile"
+rm "$statfile" "$statfile2"
 echo ""
 get-commit-stat "$saveline"
 echo ""
@@ -56,27 +66,30 @@ echo "Bytes after compression: `cat "$1"|grep -F -- --bytes-c|intsum`"
 }
 
 function dir-to-repo {
-(
 dn="`dir-wo-slash "$1"`"
-echo n"`basename "$dn"`"
-if [ "$use_atime" == "yes" ]; then atime_dtr="`ls -ldu --full-time "$dn"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`";fi
-settings-from-file "$dn"|sed -r 's/^/s/'
-(dir-content-to-repo "$dn"|sed -r 's/^/c/')
-if [ "$use_atime" == "yes" ]; then touch -ad "$atime_dtr" "$dn";fi
-echo --directories 1 >&2;
-)|content-to-hash
-}
-
-function dir-content-to-repo {
-ls -1A "$1"|
-(while IFS="" read a_dctr; do
-if [ -h "$1"/"$a_dctr" ]; then echo l"`symlink-to-repo "$1"/"$a_dctr"`"
-else
-if [ -d "$1"/"$a_dctr" ]; then echo d"`dir-to-repo "$1"/"$a_dctr"`"; fi
-if [ -f "$1"/"$a_dctr" ]; then echo f"`file-to-repo "$1"/"$a_dctr"`"; fi
-fi
-done
-)|sort
+rpat="`echo "$dn"|sed -r 's/\/[^\/]+$/\//;s/^[^\/]*$//;s/./\./g'`"
+dnpref="`echo "$dn"|sed -r 's/^('"$rpat"').*$/\1/'`"
+uses=""
+if [ "$use_perms" ]; then uses="$uses"'p\2\t';fi
+if [ "$use_owner" ]; then uses="$uses"'o\3\t';fi
+if [ "$use_group" ]; then uses="$uses"'g\4\t';fi
+if [ "$use_mtime" ]; then uses="$uses"'m\6\t';fi
+ls -lAR --full-time "$dn"|
+(gfnd=yes;while IFS="" read a; do
+  if [ ! "$a" ]; then gfnd=yes
+elif [ "$gfnd" -a "`echo "$a"|grep -Ec ':$'`" -gt 0 ]; then lpath="`echo "$a"|sed -r 's/:$//'`"
+elif [ "$gfnd" -a "`echo "$a"|grep -Ec '^total '`" -gt 0 ]; then gfnd=""
+else echo -n "$a";echo -ne "\t";echo "$lpath";fi
+done)|
+sed -r 's/^(.)(.........)\ +[0-9]+\ +([^ ]+)\ +([^ ]+)\ +([0-9]+)\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+)\ ([^\t]+)\t'"$rpat"'(.*)$/\1\t'"$uses"'s\5\tn\8\/\7/'|
+(while IFS="" read a; do
+nodetype="`echo "$a"|sed -r 's/^(.)(.*\t)n([^\t]+)$/\1/'`"
+nodeinfo="`echo "$a"|sed -r 's/^(.)(.*\t)n([^\t]+)$/\2/'`"
+nodepath="`echo "$a"|sed -r 's/^(.)(.*\t)n([^\t]+)$/\3/'`"
+echo -n "$nodetype$nodeinfo"
+if [ "$nodetype" == "-" ]; then echo -ne "h`cat "$dnpref$nodepath"|content-to-hash`\t";fi
+echo "n$nodepath"
+done)
 }
 
 function dir-wo-slash {
@@ -105,31 +118,6 @@ else echo --bytes-c "`file-size "$tf_cth"`" >&2; mv "$tf_cth" "$repo"/$h1/$h2;rm
 fi
 fi
 echo "$h1$h2"
-}
-
-function file-to-repo {
-(
-echo n"`basename "$1"`"
-if [ "$use_atime" == "yes" ]; then atime_ftr="`ls -ldu --full-time "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`";fi
-settings-from-file "$1"|sed -r 's/^/s/'
-h="`cat "$1"|hashsum`"
-h1="`echo "$h"|sed -r 's/^(..).*$/\1/'`"
-h2="`echo "$h"|sed -r 's/^..//'`"
-echo --files 1 >&2;
-echo --bytes-a "`file-size "$1"`" >&2; 
-if [ -f "$repo"/$h1/$h2.cat -o -f "$repo"/$h1/$h2.gz -o -f "$repo"/$h1/$h2 ]; then echo c$h1$h2; else echo c"`cat "$1"|content-to-hash`"; fi
-)|content-to-hash
-if [ "$use_atime" == "yes" ]; then touch -ad "$atime_ftr" "$1";fi
-}
-
-function symlink-to-repo {
-(
-echo n"`basename "$1"`"
-echo l"`readlink "$1"`"
-settings-from-file "$1"|sed -r 's/^/s/'
-echo --symlinks 1 >&2;
-echo --bytes-a "`file-size "$1"`" >&2; 
-)|content-to-hash
 }
 
 function select-commit {
@@ -204,26 +192,17 @@ ln -s "$link" "$2"/"$name"
 hash-to-content "$1"|grep -E '^s'|sed -r 's/^.//'| settings-to-file "$2"/"$name"
 }
 
-function settings-from-file {
-lsld="`ls -ld --full-time "$1"`"
-if [ "$use_owner" == "yes" ]; then echo o"`echo "$lsld"|sed -r 's/^[^ ]+\ +[0-9]+\ +([^ ]+).*$/\1/'`";fi
-if [ "$use_group" == "yes" ]; then echo g"`echo "$lsld"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +([^ ]+).*$/\1/'`";fi
-if [ "$use_mtime" == "yes" ]; then echo m"`echo "$lsld"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`";fi
-if [ "$use_atime" == "yes" ]; then echo a"`ls -ldu --full-time "$1"|sed -r 's/^[^ ]+\ +[0-9]+\ +[^ ]+\ +[^ ]+\ +[0-9]+\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+).*$/\1/'`";fi
-if [ "$use_perms" == "yes" ]; then echo p"`echo "$lsld"|sed -r 's/^.(.........).*$/\1/'`";fi
-}
-
 function settings-to-file {
 while IFS="" read a; do
 attribute="`echo "$a"|sed -r 's/^(.).*$/\1/'`"
 value="`echo "$a"|sed -r 's/^.//'`"
-if [ "$use_owner" == "yes" -a "$attribute" == "o" ]; then chown -h "$value" "$1"; fi
-if [ "$use_group" == "yes" -a "$attribute" == "g" ]; then chgrp -h "$value" "$1"; fi
+if [ "$use_owner" -a "$attribute" == "o" ]; then chown -h "$value" "$1"; fi
+if [ "$use_group" -a "$attribute" == "g" ]; then chgrp -h "$value" "$1"; fi
 #no support for symlink modification/access times or permissions.
 if [ ! -h "$1" ]; then
-if [ "$use_mtime" == "yes" -a "$attribute" == "m" ]; then touch -md "$value" "$1"; fi
-if [ "$use_atime" == "yes" -a "$attribute" == "a" ]; then touch -ad "$value" "$1"; fi
-if [ "$use_perms" == "yes" -a "$attribute" == "p" ]; then perm-to-file "$value" "$1"; fi
+if [ "$use_mtime" -a "$attribute" == "m" ]; then touch -md "$value" "$1"; fi
+if [ "$use_atime" -a "$attribute" == "a" ]; then touch -ad "$value" "$1"; fi
+if [ "$use_perms" -a "$attribute" == "p" ]; then perm-to-file "$value" "$1"; fi
 fi
 done
 }
@@ -274,45 +253,19 @@ function files-existing {
 ls -1A "$repo"|grep -E '^[0-9a-f]{2}$'|(while IFS="" read a; do ls -1A "$repo/$a"|(while IFS="" read b; do echo "$repo/$a/$b"; done);done)|sort
 }
 
-function nodes-referenced {
-echo "$1"
-type="`echo "$1"|sed -r 's/^(.).*$/\1/'`"
-
-if [ ! "$type" == "-" ];then
-hash_nr="`echo "$1"|sed -r 's/^.//'`"
-path="`hash-to-filename "$hash_nr"`"
-if [ ! -f "$path" ]; then return; fi
-if [ "`echo "$path"|grep -Ec '\.cat$'`" == "1" ]
-    then cat "$path"|(while IFS="" read a_nr; do nodes-referenced b"$a_nr"; done)
-fi
-if [ "$type" == "b" ]; then return; fi
-fi
-if [ "$type" == "-" ]
-then cat "$repo"/list
-else hash-to-content "$hash_nr"
-fi|
-case "$type" in
-    "-")
-            sed -r 's/^.*_([^_]*)$/c\1/';;
-    "c")
-            grep -E '^c'|sed -r 's/^c/d/';;
-    "d")
-            grep -E '^c'|sed -r 's/^c//';;
-    "f")
-            grep -E '^c'|sed -r 's/^c/b/';;
-    "l")
-            grep -E '^c'|sed -r 's/^c/b/';;
-esac|(while IFS="" read a_nr; do nodes-referenced "$a_nr"; done)
-}
-
 function all-nodes-referenced {
-nodes-referenced -|grep -Fv '-'|sed -r 's/^.//'|sort|uniq
+cat "$repo"/list|
+sed -r 's/^.*_([0-9a-f]+)$/\1/'|
+(while read a; do
+echo a
+hash-to-content "$a"|grep -E '\th[0-9a-f]+\t'|sed -r 's/^.*\th([0-9a-f]+)\t.*$/\1/'
+done)|sort|uniq
 }
 
 function all-files-referenced {
-nodes-referenced -|grep -Fv '-'|sed -r 's/^.//'|sort|uniq|
+all-nodes-referenced|
 (while IFS="" read a_afr; do
-echo "`hash-to-filename "$a_afr"`"
+`hash-to-filename "$a_afr"`
 done)|sort
 }
 
@@ -336,38 +289,16 @@ function check-sum {
 check-sum-errors|sed -r 's/^(.*)\ (.*)$/Node \1 has unmatching checksum \2/'
 }
 
-function node-integrity {
-type="`echo "$1"|sed -r 's/^(.).*$/\1/'`"
-
-if [ "$type" == "-" ]
-then cat "$repo"/list
-else
-hash_ni="`echo "$1"|sed -r 's/^.//'`"
-path="`hash-to-filename "$hash_ni"`"
-if [ ! -f "$path" ]; then return; fi
-#if [ "`echo "$path"|grep -Ec "\.cat"`" == "1" ]; then cat "$path"|sed -r 's/^/b/';fi #exit on nonexisting?
-if [ "$type" == "b" ]; then return; fi
-hash-to-content "$hash_ni"
-fi|
-case "$type" in
-    "-")
-            grep -Ecv '^.*_[0-9]{12}_[0-9a-f]{40}$';;
-    "c")
-            grep -Ecv '^s[A-Z][a-z ]*\:\ [0-9]+$|^d[0-9]{12}$|^c[0-9a-f]{40}$';;
-    "d")
-            grep -Ecv '^n.+|^sp[rwx-]{9}$|^s[og].+|s[ma][0-9 :.+-]+$|^c[dfl][0-9a-f]{40}$';;
-    "f")
-            grep -Ecv '^n.+|^sp[rwx-]{9}$|^s[og].+|s[ma][0-9 :.+-]+$|^c[0-9a-f]{40}$';;
-    "l")
-            grep -Ecv '^n.+|^l[0-9a-f]{40}$';;
-esac
-#fixme: some line prefixes does not allow multiple lines, need to check this.
-}
-
 function all-nodes-integrity {
-nodes-referenced -|sort|uniq|
-(while IFS="" read a_ani; do if [ "0`node-integrity "$a_ani"`" -gt "0" ]; then echo "$a_ani";fi;done)|
-sed -r 's/^(.)/\1 /;s/^f /File /;s/^d /Directory /;s/^l /Link /;s/^c /Snapshot /;s/^-.*$/list/;s/^(.*)$/\1 is corrupt/'
+if [ "`grep -Ecv '_[0-9]{12}_[0-9a-f]{40}$'`" -gt 0 ]; then echo "list is corrupt"
+else
+cat "$repo"/list|
+(while read aa; do
+a="`echo "$aa"|sed -r 's/^.*_([0-9a-f]+)$/\1/'`"
+if [ "`hash-to-content "$a"|grep -Ec '^[^dl-]|^[dl].*\t[^pogmn]|^-.*\t[^pogmanh]'`" -gt 0 ];
+then echo "snapshot $aa is corrupt"
+fi;done)
+fi
 }
 
 function integrity {
@@ -594,7 +525,7 @@ Options are:
 --no-group
 --no-perms
 --prefixl length   -- when deduplicating, only deduplicate file prefixes that
-                      are at least length bytes. default is 1048576.
+                      are at least length bytes. default is ${defaultprefixl}.
 
 EOF
 }
@@ -607,7 +538,8 @@ use_mtime=yes
 use_owner=yes
 use_group=yes
 use_perms=yes
-prefixl=1048576
+defaultprefixl=1048576
+prefixl=$defaultprefixl
 while [ "`echo "$1"|sed -r 's/^(..).*$/\1/'`" == "--" ]; do
  case "$1" in
   "--repo")
@@ -615,19 +547,19 @@ while [ "`echo "$1"|sed -r 's/^(..).*$/\1/'`" == "--" ]; do
    repo="$1"
    ;;
   "--no-atime")
-   use_atime=no
+   use_atime=""
    ;;
   "--no-mtime")
-   use_mtime=no
+   use_mtime=""
    ;;
   "--no-owner")
-   use_owner=no
+   use_owner=""
    ;;
   "--no-group")
-   use_group=no
+   use_group=""
    ;;
   "--no-perms")
-   use_perms=no
+   use_perms=""
    ;;
   "--prefixl")
    shift
