@@ -32,3 +32,9 @@ For usage help, run store without parameters
 Dependencies:
 It's a shell script and depends on core utils and things present on most systems. A full list:
 basename, bash, cat, chgrp, chmod, chown, date, dc, dd, diff, echo, grep, gunzip, gzip, ln, ls, mkdir, mv, readlink, rm, sed, sha1sum, sort, tee, tempfile, test, touch, uniq, whoami
+
+
+
+Author/credits:
+Written by "meingbg". Bugs, comments, suggestions etc: meingbg at gmail dot com
+Thanks to "theCroc" and Peter Schuller for valuable suggestions and insights.
