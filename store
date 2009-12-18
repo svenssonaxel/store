@@ -246,15 +246,21 @@ ls -1A "$repo"|grep -E '^[0-9a-f]{2}$'|(while IFS="" read a; do ls -1A "$repo/$a
 }
 
 function all-nodes-referenced {
-#fixme: include .cat content
 cat "$list"|
 sed -r 's/^.*_([0-9a-f]+)$/\1/'|
-(while read a; do
+while read a; do
 echo $a
 dirhash="`hash-to-content "$a"|grep -E '^c'|sed -r 's/^.//'`"
 echo $dirhash
 hash-to-content "$dirhash"|grep -E "`echo -e "\t"`"'h[0-9a-f]+'"`echo -e "\t"`"|sed -r 's/^.*\th([0-9a-f]+)\t.*$/\1/'
-done)|sort|uniq
+done|nodes-referenced-expand-cat|sort|uniq
+}
+
+function nodes-referenced-expand-cat {
+while read a; do
+echo "$a"
+if [ "`hash-to-filename "$a"|grep -Ec '\.cat$'`" == "1" ]; then cat "$repo/`echo "$a"|sed -r 's/^(..)/\1\//'`.cat"|nodes-referenced-expand-cat; fi
+done
 }
 
 function all-files-referenced {
