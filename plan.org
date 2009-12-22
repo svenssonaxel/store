@@ -34,6 +34,9 @@ Further optimizeation would supposedly decrease this
 **** DONE Something's wrong, found prefixes are shorter. Debug it
 dd on streams obviously produces more or less random results.
 Changed it to only work on (temporary) files.
+*** TODO update node list
+could be done faster with diff than with grep for each new .cat file.
+Perhaps the .cat files could be sorted out in the first run.
 ** Optimize integrity check
 *** DONE optimize nodes-referenced in gc to be breadth-first
 with repository 2.0 format this is unnecessary, or even close to the same thing
@@ -84,3 +87,34 @@ don't change obj folders.
 whatever, tmp can be a folder
 *** DONE change init-repo and tmpfile to have repo/tmp
 ** TODO pattern doesn't work with list
+** Statistics for change to repository format 2.0:
+*** 2.0
+code size: 606
+first save time: 43m5
+other save time: 33 25 24 26 27 27 24 25 26
+repo size: 20871244
+repo filen: 25586
+dedup time: 48m11
+gc time: 75m8
+repo size: 20851584
+repo filen: 25657
+*** 1.02
+code size: 672
+first save time: 67m
+other save time: 48m8 40m33 38m29 41m55 43m43 44m14 40m17 44m46 46m7
+repo size: 22223812
+repo filen: 360566
+dedup time: 513m34
+gc time: 1638m
+repo size: 22212860
+repo filen: 
+*** Summary
+(defun f (a b) (* 100 (- 1 (/ (+ 0.0 a) b))))
+code size decreased with 10%
+time to save first backup (to an empty repository) decreased with 36%
+average time to save another backup decreased with 39%
+repository size before prefix deduplication decreased with 6%
+number of files in repository decreased with 93%
+time to do a prefix deduplication, including integrity check, decreased with 91%
+time to perform a GC decreased with 95%
+repository size after prefix deduplication decreased with 6%
