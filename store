@@ -128,11 +128,11 @@ function select-commit {
 if [ "`cat "$list"|grep -Fc "$1"`" -gt "1" ];
 then echor "More than one snapshot matches:" >&2
 cat "$list"|grep -F "$1" 1>&2
-return
+exit
 fi
 if [ "`cat "$list"|grep -Fc "$1"`" -eq "0" ];
 then echor "No directory matches." >&2
-return
+exit
 fi
 cat "$list"|grep -F "$1"
 }
@@ -171,7 +171,7 @@ rm "$tf_dfr"
 
 function hash-to-content {
 h1="`echo "$1"|sed -r 's/^(..).*$/\1/'`"
-h2="`echo "$1"|sed -r 's/^..([^ ]*).*$/\1/'`"
+h2="`echo "$1"|sed -r 's/^..//'`"
 if [ -f "$repo"/$h1/$h2.cat ]
 then cat "$repo"/$h1/$h2.cat|
 (while IFS="" read a_htc; do hash-to-content "$a_htc" ;done)
@@ -211,19 +211,19 @@ tempfile -d "$repo"/tmp
 
 function echor {
 echo -ne '\e[31m'
-echo "$@"
-echo -ne '\e[0m'
+echo -n "$@"
+echo -e '\e[0m'
 }
 
 function echog {
 echo -ne '\e[32m'
-echo "$@"
-echo -ne '\e[0m'
+echo -n "$@"
+echo -e '\e[0m'
 }
 
 function hash-to-filename {
 h1="`echo "$1"|sed -r 's/^(..).*$/\1/'`"
-h2="`echo "$1"|sed -r 's/^..([^ ]*).*$/\1/'`"
+h2="`echo "$1"|sed -r 's/^..//'`"
 if [ -f "$repo"/$h1/$h2.cat ]
 then echo "$repo"/$h1/$h2.cat
 else
@@ -252,12 +252,12 @@ while read a; do
 echo $a
 dirhash="`hash-to-content "$a"|grep -E '^c'|sed -r 's/^.//'`"
 echo $dirhash
-hash-to-content "$dirhash"|grep -E "`echo -e "\t"`"'h[0-9a-f]+'"`echo -e "\t"`"|sed -r 's/^.*\th([0-9a-f]+)\t.*$/\1/'
+hash-to-content "$dirhash"|grep -E '	h[0-9a-f]+	'|sed -r 's/^.*\th([0-9a-f]+)\t.*$/\1/'
 done|nodes-referenced-expand-cat|sort|uniq
 }
 
 function nodes-referenced-expand-cat {
-while read a; do
+while IFS="" read a; do
 echo "$a"
 if [ "`hash-to-filename "$a"|grep -Ec '\.cat$'`" == "1" ]; then cat "$repo/`echo "$a"|sed -r 's/^(..)/\1\//'`.cat"|nodes-referenced-expand-cat; fi
 done
