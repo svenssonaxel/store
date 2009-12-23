@@ -1,7 +1,6 @@
 #!/bin/bash
 
 function list-dir {
-init-repo
 cat "$list"|grep -E "$1"
 }
 
@@ -10,12 +9,25 @@ mkdir -p "$repo"/tmp
 touch "$list"
 }
 
+function lock-repo {
+repolock="$repo"/lock_"`date +$PPID%s%N|hashsum`"
+if [ "`ls -1 "$repo"|grep -Ec "^lock"`" -gt 0 ]
+then echor "Repository is locked by another process. Waiting for repository to be released..." >&2
+while [ "`ls -1 "$repo"|grep -Ec "^lock"`" -gt 0 ]; do sleep 10; done
+echog "Repository released." >&2
+fi
+touch "$repolock"
+if [ "`ls -1 "$repo"|grep -Ec "^lock"`" -eq 1 ]
+then echo "$repolock"
+else rm "$repolock";lock-repo
+fi
+}
+
 function hashsum {
 sha1sum|sed -r 's/^([^ ]*).*$/\1/'
 }
 
 function save-dir {
-init-repo
 statfile="`tmpfile`"
 statfile2="`tmpfile`"
 dirname="`basename "$1"`"
@@ -35,7 +47,6 @@ return
 }
 
 function get-commit-stat {
-init-repo
 commit="`select-commit "$1"`"
 if [ "${commit}" == "" ]; then return; fi
 commithash_gcs="`echo "$commit"|sed -r 's/^.*_([^_]*)$/\1/'`"
@@ -138,7 +149,6 @@ cat "$list"|grep -F "$1"
 }
 
 function load-dir {
-init-repo
 commithash_ld="`select-commit "$1"|sed -r 's/^.*_([^_]*)$/\1/'`"
 if [ "${commithash_ld}" == "" ]; then exit; fi
 dirhash="`hash-to-content "$commithash_ld"|grep -E '^c'|sed -r 's/^.//'`"
@@ -580,10 +590,13 @@ list="$repo"/list
 
 cmd_main="$1"
 shift
+if [ ! "$cmd_main" == "help" ]; then init-repo;fi
 case "$cmd_main" in
  "save")
   if [ ! -d "$1" ]; then echo "Directory does not exist"; exit; fi
+  repolock="`lock-repo`"
   save-dir "$1"
+  rm "$repolock"
   ;;
  "load")
   if [ ! -d "$2" ]; then echo "Target directory does not exist"; exit; fi
@@ -596,7 +609,9 @@ case "$cmd_main" in
   get-commit-stat "$1"
   ;;
  deduplicate|gc|gc-list|integrity)
+  repolock="`lock-repo`"
   $cmd_main
+  rm "$repolock"
   ;;
 #debugging
  "do")
