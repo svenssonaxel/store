@@ -87,7 +87,7 @@ elif [ "$gfnd" -a "`echo "$a"|grep -Ec '^total '`" -gt 0 ]; then gfnd=""
 else echo -n "$a";echo -ne "\t";echo "$lpath";fi
 done)|
 (echo -n "`ls -ld --full-time "$dn"`";echo -e "\t//";cat)|
-sed -r 's/^(.)(.........)\ +[0-9]+\ +([^ ]+)\ +([^ ]+)\ +([0-9]+)\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+)\ ([^\t]+)\t'"$rpat"'(.*)$/\1\t'"$uses"'s\5\tn\8\/\7/;s/\tn\/\/\//\tn/'|
+sed -r 's/^(.)(.........)\ +[0-9]+\ +([^ ]+)\ +([^ ]+)\ +([0-9]+)\ +([0-9-]+\ [0-9:.]+\ [0-9+-]+)\ ([^\t]+)\t(.*)$/\1\t'"$uses"'s\5\tn\8\/\7/;s/\tn\/\/\//\tn/;s/\tn'"$rpat"'/\tn/'|
 (while IFS="" read a; do
 nodetype="`echo "$a"|sed -r 's/^(.)(.*\t)n([^\t]+)$/\1/'`"
 nodeinfo="`echo "$a"|sed -r 's/^(.)(.*\t)n([^\t]+)$/\2/'`"
