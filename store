@@ -158,7 +158,7 @@ hash-to-content "$dirhash" |
 while IFS="" read a; do
 nodetype="`echo "$a"|sed -r 's/^(.).*$/\1/'`"
 nodeinfo="`echo "$a"|sed -r 's/^.\t(.*)$/\1/;s/\t/\n/g'`"
-name="$2"/"`echo "$nodeinfo"|grep -E '^n'|sed -r 's/^.//'`"
+name="$to_dir"/"`echo "$nodeinfo"|grep -E '^n'|sed -r 's/^.//'`"
   if [ "$nodetype" == "d" ]; then
 mkdir "$name"
 elif [ "$nodetype" == "-" ]; then
